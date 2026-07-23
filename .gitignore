@@ -1,0 +1,5 @@
+node_modules/
+audio_cache/
+database/
+cookies.txt
+.env
