@@ -6,8 +6,10 @@ WORKDIR /app
 
 COPY . .
 
+ENV PORT=8080
+
 RUN npm install
 
-EXPOSE 10000
+EXPOSE 8080
 
 CMD ["node", "index.js"]

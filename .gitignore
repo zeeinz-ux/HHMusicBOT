@@ -3,3 +3,4 @@ audio_cache/
 database/
 cookies.txt
 .env
+.claude/
