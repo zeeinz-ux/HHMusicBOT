@@ -36,6 +36,8 @@ if (!fsSync.existsSync(CACHE_DIR)) {
     fsSync.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
+const isLowMemory = process.env.NODE_OPTIONS?.includes('max-old-space-size');
+
 let cachedFetch;
 async function ensureFetch() {
     if (cachedFetch) return cachedFetch;
@@ -874,26 +876,23 @@ class MusicPlayer {
 
             // If we need to download, start streaming immediately while downloading in background
             if (shouldDownload) {
-                // Start download in background (don't await)
-                const hash = crypto.createHash('md5').update(this.currentTrack.url).digest('hex');
-                const filepath = path.join(CACHE_DIR, `track_${hash}.opus`);
-                
-                // Store track reference for background download (currentTrack might change)
+                // Download in background (skip on memory-constrained systems)
                 const trackToDownload = this.currentTrack;
-                
-                // Download in background
-                this.downloadTrack(trackToDownload, streamUrl_final, streamInfo)
-                    .then(file => {
-                        // Only update if we're still on the same track
-                        if (this.currentTrack && this.currentTrack.url === trackToDownload.url) {
-                            this.currentDownloadedFile = file;
-                        }
-                    })
-                    .catch(err => {
-                        if (err && err.message) {
-                            console.error(`⚠️ Background download failed: ${err.message}`);
-                        }
-                    });
+                const filepath = path.join(CACHE_DIR, `track_${crypto.createHash('md5').update(this.currentTrack.url).digest('hex')}.opus`);
+
+                if (!isLowMemory) {
+                    this.downloadTrack(trackToDownload, streamUrl_final, streamInfo)
+                        .then(file => {
+                            if (this.currentTrack && this.currentTrack.url === trackToDownload.url) {
+                                this.currentDownloadedFile = file;
+                            }
+                        })
+                        .catch(err => {
+                            if (err && err.message) {
+                                console.error(`⚠️ Background download failed: ${err.message}`);
+                            }
+                        });
+                }
 
                 // Stream directly for immediate playback
                 let audioStream;
@@ -1822,7 +1821,6 @@ class MusicPlayer {
             }
 
             if (streamInfo) {
-                // Download track in background
                 let streamUrl_final;
                 if (typeof streamInfo === 'string') {
                     streamUrl_final = streamInfo;
@@ -1832,13 +1830,14 @@ class MusicPlayer {
                     streamUrl_final = streamInfo;
                 }
 
-                await this.downloadTrack(track, streamUrl_final, streamInfo);
-                
-                // Mark as preloaded
+                if (!isLowMemory) {
+                    await this.downloadTrack(track, streamUrl_final, streamInfo);
+                }
+
                 this.preloadedStreams.set(track.url, {
                     info: streamInfo,
                     track: track,
-                    downloaded: true
+                    downloaded: !isLowMemory
                 });
             }
         } catch (error) {
