@@ -26,18 +26,25 @@ class YouTube {
             baseOptions.extractorArgs = 'youtube:player_client=android,web';
         } else if (config.ytdl.cookiesFile) {
             const fs = require('fs');
-            if (fs.existsSync(config.ytdl.cookiesFile)) {
-                baseOptions.cookies = config.ytdl.cookiesFile;
+            const p = require('path');
+            const cookiesPath = p.resolve(config.ytdl.cookiesFile);
+            if (fs.existsSync(cookiesPath)) {
+                baseOptions.cookies = cookiesPath;
                 baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=android,web';
             } else {
-                // BUG FIX: previously this branch silently fell through to yt-dlp's
-                // default client, which on a bot-gated IP = "Sign in to confirm".
-                console.warn(`[YouTube] cookies.txt not found at ${config.ytdl.cookiesFile}, falling back to android client`);
+                console.warn(`[YouTube] cookies.txt not found at ${cookiesPath}, falling back to android client`);
                 baseOptions.extractorArgs = 'youtube:player_client=android';
             }
         } else {
-            // Android client — paling ringan, jarang kena bot check di IP datacenter
-            baseOptions.extractorArgs = 'youtube:player_client=android';
+            // Check for Render secret file as final fallback
+            const fs = require('fs');
+            const renderSecretPath = '/etc/secrets/cookies.txt';
+            if (fs.existsSync(renderSecretPath)) {
+                baseOptions.cookies = renderSecretPath;
+                baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=android,web';
+            } else {
+                baseOptions.extractorArgs = 'youtube:player_client=android';
+            }
         }
 
         if (config.ytdl.proxy) {

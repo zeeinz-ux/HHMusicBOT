@@ -19,12 +19,14 @@ if (process.env.COOKIES_CONTENT && config.ytdl.cookiesFile) {
     }
 }
 
-// Copy Render secret file (/etc/secrets/cookies.txt) to writable location
+// Auto-detect Render/Bot host secret file at /etc/secrets/cookies.txt
 const renderSecretPath = '/etc/secrets/cookies.txt';
-if (config.ytdl.cookiesFile) {
+const renderSecretExists = fs.existsSync(renderSecretPath);
+
+if (renderSecretExists && config.ytdl.cookiesFile) {
     const cookiesPath = path.resolve(config.ytdl.cookiesFile);
     try {
-        if (!fs.existsSync(cookiesPath) && fs.existsSync(renderSecretPath)) {
+        if (!fs.existsSync(cookiesPath)) {
             const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
             fs.writeFileSync(cookiesPath, cookiesContent, 'utf-8');
             console.log(`[COOKIES] Copied Render secret file to ${cookiesPath}`);
@@ -33,6 +35,18 @@ if (config.ytdl.cookiesFile) {
         console.warn(`[COOKIES] Failed to copy Render secret file: ${e.message}`);
     }
 }
+
+// Fallback: if /etc/secrets/cookies.txt exists but no COOKIES_FILE set, use it directly
+if (renderSecretExists && !config.ytdl.cookiesFile) {
+    console.log(`[COOKIES] /etc/secrets/cookies.txt found but COOKIES_FILE not set, skipping`);
+}
+
+// Debug log: show auth config
+const poTokenSet = !!config.ytdl.poToken;
+const cookiesFileSet = !!config.ytdl.cookiesFile;
+const cookiesFromBrowserSet = !!config.ytdl.cookiesFromBrowser;
+const cookiesContentSet = !!process.env.COOKIES_CONTENT;
+console.log(`[CONFIG] YouTube auth: PO_TOKEN=${poTokenSet} COOKIES_FILE=${cookiesFileSet}(${config.ytdl.cookiesFile||'-'}) COOKIES_FROM_BROWSER=${cookiesFromBrowserSet} COOKIES_CONTENT=${cookiesContentSet} RenderSecret=${renderSecretExists}`);
 
 require("./src/commandLoader"); // Load and deploy commands
 
