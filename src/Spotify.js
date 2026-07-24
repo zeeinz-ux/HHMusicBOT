@@ -12,7 +12,7 @@ class Spotify {
     static refreshToken = null;
 
     static getRedirectUri() {
-        return process.env.SPOTIFY_REDIRECT_URI || `http://localhost:3000/spotify-callback`;
+        return process.env.SPOTIFY_REDIRECT_URI || `http://127.0.0.1:3000/spotify-callback`;
     }
 
     static loadStoredToken() {
@@ -59,7 +59,6 @@ class Spotify {
         const data = await api.authorizationCodeGrant(code);
         this.refreshToken = data.body.refresh_token;
         this.saveStoredToken();
-        // Re-init the main API with user tokens
         this.spotifyApi = new SpotifyWebApi({
             clientId: config.spotify.clientId,
             clientSecret: config.spotify.clientSecret,
@@ -93,7 +92,6 @@ class Spotify {
             }
         }
 
-        // Check if token needs refresh
         if (Date.now() >= this.tokenExpiresAt) {
             try {
                 if (this.refreshToken) {
@@ -226,23 +224,24 @@ class Spotify {
             const unknownTitle = guildId ? await LanguageManager.getTranslation(guildId, 'spotify.unknown_title') : 'Unknown Title';
             const unknownArtist = guildId ? await LanguageManager.getTranslation(guildId, 'spotify.unknown_artist') : 'Unknown Artist';
 
-            // Try official npm library first
-            const libResult = await this.getPlaylistTracks(playlistId, guildId);
-            if (libResult.length > 0) return libResult;
-
-            // Fallback: raw API call
             const token = this.spotifyApi.getAccessToken();
             if (token) {
                 const mod = await import('node-fetch');
                 const fetch = mod.default || mod;
-                const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=${config.bot.maxPlaylistSize}&market=TR`, {
+
+                // Fetch playlist metadata — includes items array (new API format uses top-level items)
+                const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}?market=from_token`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (res.ok) {
-                    const body = await res.json();
+                if (metaRes.ok) {
+                    const meta = await metaRes.json();
                     const tracks = [];
-                    for (const entry of (body?.items || []).slice(0, config.bot.maxPlaylistSize)) {
-                        const track = entry?.track;
+                    const itemsField = meta?.items;
+                    const rawItems = Array.isArray(itemsField)
+                        ? itemsField
+                        : itemsField?.items || [];
+                    for (const entry of rawItems.slice(0, config.bot.maxPlaylistSize)) {
+                        const track = entry?.item || entry?.track;
                         if (!track || !track.id) continue;
                         const artists = track.artists?.map(a => a.name).join(', ') || unknownArtist;
                         const title = track.name || unknownTitle;
@@ -259,6 +258,10 @@ class Spotify {
                     if (tracks.length > 0) return tracks;
                 }
             }
+
+            // Fallback: official npm library
+            const libResult = await this.getPlaylistTracks(playlistId, guildId);
+            if (libResult.length > 0) return libResult;
         } catch (error) {
             console.error(`[Spotify] getPlaylist API failed:`, error?.message || error);
         }

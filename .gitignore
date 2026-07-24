@@ -4,3 +4,4 @@ database/
 cookies.txt
 .env
 .claude/
+discloud.config
