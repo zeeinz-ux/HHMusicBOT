@@ -62,6 +62,7 @@ require("./src/commandLoader"); // Load and deploy commands
 // Clean up audio cache directory on startup
 async function cleanupAudioCache() {
     const cacheDir = path.join(__dirname, 'audio_cache');
+    const MAX_CACHE_MB = 200;
 
     try {
         if (fs.existsSync(cacheDir)) {
@@ -70,21 +71,46 @@ async function cleanupAudioCache() {
             
             let deletedCount = 0;
             let skippedCount = 0;
+            let totalSize = 0;
+            const fileStats = [];
 
             for (const file of files) {
                 const absolutePath = path.join(cacheDir, file);
+                let stat;
+                try {
+                    stat = await fsPromises.stat(absolutePath);
+                } catch {
+                    continue;
+                }
+                totalSize += stat.size;
 
                 if (protectedFiles.has(path.resolve(absolutePath))) {
                     skippedCount++;
                     continue;
                 }
 
-                try {
-                    await fsPromises.unlink(absolutePath);
-                    deletedCount++;
-                } catch (err) {
-                    console.error(chalk.red(`❌ Failed to delete ${file}:`), err.message);
+                fileStats.push({ path: absolutePath, mtime: stat.mtimeMs, size: stat.size });
+            }
+
+            // Delete oldest files first if cache exceeds MAX_CACHE_MB
+            const maxBytes = MAX_CACHE_MB * 1024 * 1024;
+            if (totalSize > maxBytes) {
+                fileStats.sort((a, b) => a.mtime - b.mtime);
+                let excess = totalSize - maxBytes;
+                for (const f of fileStats) {
+                    if (excess <= 0) break;
+                    try {
+                        await fsPromises.unlink(f.path);
+                        excess -= f.size;
+                        deletedCount++;
+                    } catch (err) {
+                        console.error(chalk.red(`❌ Failed to delete ${path.basename(f.path)}:`), err.message);
+                    }
                 }
+            }
+
+            if (deletedCount > 0 || skippedCount > 0) {
+                console.log(chalk.cyan(`[CACHE] Deleted ${deletedCount} old files, skipped ${skippedCount} protected (${(totalSize / 1024 / 1024).toFixed(1)}MB → max ${MAX_CACHE_MB}MB)`));
             }
         } else {
             fs.mkdirSync(cacheDir, { recursive: true });

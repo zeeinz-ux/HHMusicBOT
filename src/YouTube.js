@@ -8,8 +8,8 @@ class YouTube {
         const baseOptions = {
             noCheckCertificates: true,
             noWarnings: true,
-            retries: 3,
-            fragmentRetries: 3,
+            retries: 1,
+            fragmentRetries: 1,
             noCacheDir: true,
             jsRuntimes: 'node',
             addHeader: [
