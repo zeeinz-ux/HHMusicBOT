@@ -964,7 +964,7 @@ class MusicPlayer {
 
                     this.resource = createAudioResource(ffmpegProcess, {
                         inputType: StreamType.Raw,
-                        inlineVolume: true,
+                        inlineVolume: false,
                         metadata: {
                             title: this.currentTrack.title,
                             url: this.currentTrack.url,
@@ -1003,7 +1003,7 @@ class MusicPlayer {
 
                 this.resource = createAudioResource(ffmpegProcess, {
                     inputType: StreamType.Raw,
-                    inlineVolume: true,
+                    inlineVolume: false,
                     metadata: {
                         title: this.currentTrack.title,
                         url: this.currentTrack.url,
