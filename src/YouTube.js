@@ -36,14 +36,30 @@ class YouTube {
                 baseOptions.extractorArgs = 'youtube:player_client=android';
             }
         } else {
-            // Check for Render secret file as final fallback
+            // Check for Render secret file as final fallback (use /tmp copy since /etc/secrets is read-only)
             const fs = require('fs');
-            const renderSecretPath = '/etc/secrets/cookies.txt';
-            if (fs.existsSync(renderSecretPath)) {
-                baseOptions.cookies = renderSecretPath;
+            const tmpCookiesPath = '/tmp/cookies.txt';
+            if (fs.existsSync(tmpCookiesPath)) {
+                baseOptions.cookies = tmpCookiesPath;
                 baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=android,web';
+                console.log(`[YouTube] Using cookies from ${tmpCookiesPath}`);
             } else {
-                baseOptions.extractorArgs = 'youtube:player_client=android';
+                // Also check /etc/secrets/cookies.txt directly as last resort
+                const renderSecretPath = '/etc/secrets/cookies.txt';
+                if (fs.existsSync(renderSecretPath)) {
+                    try {
+                        const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
+                        fs.writeFileSync(tmpCookiesPath, cookiesContent, 'utf-8');
+                        baseOptions.cookies = tmpCookiesPath;
+                        baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=android,web';
+                        console.log(`[YouTube] Copied and using cookies from ${tmpCookiesPath}`);
+                    } catch (e) {
+                        console.warn(`[YouTube] Failed to copy secret file: ${e.message}`);
+                        baseOptions.extractorArgs = 'youtube:player_client=android';
+                    }
+                } else {
+                    baseOptions.extractorArgs = 'youtube:player_client=android';
+                }
             }
         }
 

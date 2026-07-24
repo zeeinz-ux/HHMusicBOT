@@ -36,9 +36,18 @@ if (renderSecretExists && config.ytdl.cookiesFile) {
     }
 }
 
-// Fallback: if /etc/secrets/cookies.txt exists but no COOKIES_FILE set, use it directly
+// Fallback: copy to writable temp location if no COOKIES_FILE set
 if (renderSecretExists && !config.ytdl.cookiesFile) {
-    console.log(`[COOKIES] /etc/secrets/cookies.txt found but COOKIES_FILE not set, skipping`);
+    const tmpCookiesPath = '/tmp/cookies.txt';
+    try {
+        if (!fs.existsSync(tmpCookiesPath)) {
+            const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
+            fs.writeFileSync(tmpCookiesPath, cookiesContent, 'utf-8');
+            console.log(`[COOKIES] Copied Render secret file to ${tmpCookiesPath}`);
+        }
+    } catch (e) {
+        console.warn(`[COOKIES] Failed to copy to tmp: ${e.message}`);
+    }
 }
 
 // Debug log: show auth config
