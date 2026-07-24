@@ -8,8 +8,8 @@ class YouTube {
         const baseOptions = {
             noCheckCertificates: true,
             noWarnings: true,
-            retries: 1,
-            fragmentRetries: 1,
+            retries: 3,
+            fragmentRetries: 3,
             noCacheDir: true,
             jsRuntimes: 'node',
             addHeader: [
@@ -19,12 +19,21 @@ class YouTube {
             ...extraOptions
         };
 
-        // player_client: biarin yt-dlp auto-pilih berdasarkan ada/tidaknya cookies + JS runtime
-        //   Ada cookies → tv_downgraded,web  (web butuh JS runtime → jsRuntimes: 'node' nyediain)
-        //   Gak ada cookies → visionos,android_vr,web
-        // Dengan jsRuntimes: 'node', web client bisa solve challenge → format dapet.
+        // yt-dlp perlu write access ke cookies file (untuk refresh cookie jar).
+        // Kalo file asli di read-only filesystem (container), kita copy ke temp dir dulu.
+        //
+        // player_client: pake client yg gak butuh PO Token.
+        //   - tv           : YouTube TV, stabil (codec: m4a)
+        //   - mweb         : mobile web (codec: opus/m4a)
+        //   - android_vr   : Android VR (codec: opus)
+        //   - visionos     : visionOS (codec: opus)
+        // Default (tv_downgraded,web) dengan cookies bisa aja gak nyediain audio-only format.
+        const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
+
         if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken}`;
+            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken};${clientArgs}`;
+        } else {
+            baseOptions.extractorArgs = clientArgs;
         }
 
         const fs = require('fs');
@@ -204,60 +213,38 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // Coba beberapa client secara berurutan — YouTube kadang nolak client tertentu
-            const clientsToTry = [
-                null,                                 // default (tv_downgraded,web dengan cookies)
-                'player_client=tv,mweb,android_vr,visionos',
-                'player_client=mweb',
-                'player_client=tv',
-                'player_client=web_safari',
-            ];
+            // Get stream URL — pake format audio-only biar gak gagal
+            const info = await youtubedl(url, this.getYtDlpOptions({
+                dumpSingleJson: true,
+                format: 'ba/b',
+            }));
 
-            let lastError;
-            for (const clientOverride of clientsToTry) {
-                try {
-                    const opts = this.getYtDlpOptions({
-                        dumpSingleJson: true,
-                        format: 'ba/b',
-                    });
-                    if (clientOverride) {
-                        opts.extractorArgs = `youtube:${clientOverride}`;
-                    }
-                    const info = await youtubedl(url, opts);
-
-                    if (info && info.url) {
-                        const baseUrl = info.url;
-                        const canSeek = /googlevideo\.com/i.test(baseUrl);
-                        let finalUrl = baseUrl;
-
-                        const seekSeconds = Math.max(0, Number(startSeconds) || 0);
-                        if (seekSeconds > 0 && canSeek) {
-                            const startMs = Math.floor(seekSeconds * 1000);
-                            const separator = baseUrl.includes('?') ? '&' : '?';
-                            finalUrl = `${baseUrl}${separator}begin=${startMs}`;
-                        }
-
-                        return {
-                            url: finalUrl,
-                            rawUrl: baseUrl,
-                            type: info.acodec && info.acodec.includes('opus') ? 'opus' : 'arbitrary',
-                            duration: info.duration || 0,
-                            bitrate: info.abr || info.tbr || 0,
-                            canSeek,
-                            format: info.format,
-                            httpHeaders: info.http_headers || {}
-                        };
-                    }
-                    lastError = new Error('No stream URL found');
-                } catch (e) {
-                    lastError = e;
-                    if (clientOverride) {
-                        console.log(`[YouTube] getStream client "${clientOverride.split('=')[1]}" gagal, coba client lain...`);
-                    }
-                }
+            if (!info || !info.url) {
+                const errorMsg = guildId ? await LanguageManager.getTranslation(guildId, 'youtube.no_stream_url') : 'No stream URL found';
+                throw new Error(errorMsg);
             }
 
-            throw lastError;
+            const baseUrl = info.url;
+            const canSeek = /googlevideo\.com/i.test(baseUrl);
+            let finalUrl = baseUrl;
+
+            const seekSeconds = Math.max(0, Number(startSeconds) || 0);
+            if (seekSeconds > 0 && canSeek) {
+                const startMs = Math.floor(seekSeconds * 1000);
+                const separator = baseUrl.includes('?') ? '&' : '?';
+                finalUrl = `${baseUrl}${separator}begin=${startMs}`;
+            }
+
+            return {
+                url: finalUrl,
+                rawUrl: baseUrl,
+                type: info.acodec && info.acodec.includes('opus') ? 'opus' : 'arbitrary',
+                duration: info.duration || 0,
+                bitrate: info.abr || info.tbr || 0,
+                canSeek,
+                format: info.format,
+                httpHeaders: info.http_headers || {}
+            };
 
         } catch (error) {
             throw error;
