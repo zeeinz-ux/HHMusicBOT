@@ -10,7 +10,7 @@ class YouTube {
             noWarnings: true,
             retries: 3,
             fragmentRetries: 3,
-            // User-Agent header ekle
+            noCacheDir: true,
             addHeader: [
                 'referer:youtube.com',
                 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
@@ -23,14 +23,14 @@ class YouTube {
             baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=mweb,web`;
         } else if (config.ytdl.cookiesFromBrowser) {
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
-            baseOptions.extractorArgs = 'youtube:player_client=android,web';
+            baseOptions.extractorArgs = 'youtube:player_client=web,mweb,android';
         } else if (config.ytdl.cookiesFile) {
             const fs = require('fs');
             const p = require('path');
             const cookiesPath = p.resolve(config.ytdl.cookiesFile);
             if (fs.existsSync(cookiesPath)) {
                 baseOptions.cookies = cookiesPath;
-                baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=android,web';
+                baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_skip=webpage;player_client=web,mweb,android';
             } else {
                 console.warn(`[YouTube] cookies.txt not found at ${cookiesPath}, falling back to android client`);
                 baseOptions.extractorArgs = 'youtube:player_client=android';
@@ -41,7 +41,7 @@ class YouTube {
             const tmpCookiesPath = '/tmp/cookies.txt';
             if (fs.existsSync(tmpCookiesPath)) {
                 baseOptions.cookies = tmpCookiesPath;
-                baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=android,web';
+                baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_skip=webpage;player_client=web,mweb,android';
                 console.log(`[YouTube] Using cookies from ${tmpCookiesPath}`);
             } else {
                 // Also check /etc/secrets/cookies.txt directly as last resort
@@ -51,7 +51,7 @@ class YouTube {
                         const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
                         fs.writeFileSync(tmpCookiesPath, cookiesContent, 'utf-8');
                         baseOptions.cookies = tmpCookiesPath;
-                        baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=android,web';
+                        baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_skip=webpage;player_client=web,mweb,android';
                         console.log(`[YouTube] Copied and using cookies from ${tmpCookiesPath}`);
                     } catch (e) {
                         console.warn(`[YouTube] Failed to copy secret file: ${e.message}`);
