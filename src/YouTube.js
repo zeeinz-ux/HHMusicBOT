@@ -18,48 +18,40 @@ class YouTube {
             ...extraOptions
         };
 
-        // player_client=tv : gak butuh PO Token sama sekali
-        // cookies dipake biar format gak DRM
-        const clientArgs = 'youtube:player_client=tv';
+        // yt-dlp perlu write access ke cookies file (untuk refresh cookie jar).
+        // Kalo file asli di read-only filesystem (container), kita copy ke temp dir dulu.
+        // extractorArgs cuma dipake kalo ada PO Token — biarin yt-dlp auto-pilih
+        // player_client (tv_downgraded,web kalo ada cookies; visionos,android_vr,web tanpa cookies)
+        const fs = require('fs');
+        const p = require('path');
+        const os = require('os');
+        const tmpCookiePath = p.join(os.tmpdir(), 'hhmusic-cookies.txt');
 
         if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};${clientArgs}`;
-        } else if (config.ytdl.cookiesFromBrowser) {
+            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken}`;
+        }
+
+        if (config.ytdl.cookiesFromBrowser) {
+            // yt-dlp manage temp file sendiri untuk cookies dari browser
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
-            baseOptions.extractorArgs = clientArgs;
-        } else if (config.ytdl.cookiesFile) {
-            const fs = require('fs');
-            const p = require('path');
-            const cookiesPath = p.resolve(config.ytdl.cookiesFile);
-            if (fs.existsSync(cookiesPath)) {
-                baseOptions.cookies = cookiesPath;
-                baseOptions.extractorArgs = clientArgs;
-            } else {
-                console.warn(`[YouTube] cookies.txt not found at ${cookiesPath}, using android client`);
-                baseOptions.extractorArgs = clientArgs;
-            }
         } else {
-            const fs = require('fs');
-            const tmpCookiesPath = '/tmp/cookies.txt';
-            if (fs.existsSync(tmpCookiesPath)) {
-                baseOptions.cookies = tmpCookiesPath;
-                baseOptions.extractorArgs = clientArgs;
-                console.log(`[YouTube] Using cookies from ${tmpCookiesPath}`);
-            } else {
-                const renderSecretPath = '/etc/secrets/cookies.txt';
-                if (fs.existsSync(renderSecretPath)) {
-                    try {
-                        const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
-                        fs.writeFileSync(tmpCookiesPath, cookiesContent, 'utf-8');
-                        baseOptions.cookies = tmpCookiesPath;
-                        baseOptions.extractorArgs = clientArgs;
-                        console.log(`[YouTube] Copied and using cookies from ${tmpCookiesPath}`);
-                    } catch (e) {
-                        console.warn(`[YouTube] Failed to copy secret file: ${e.message}`);
-                        baseOptions.extractorArgs = clientArgs;
-                    }
-                } else {
-                    baseOptions.extractorArgs = clientArgs;
+            let srcPath = null;
+            if (config.ytdl.cookiesFile) {
+                srcPath = p.resolve(config.ytdl.cookiesFile);
+            } else if (fs.existsSync(tmpCookiePath)) {
+                srcPath = tmpCookiePath;
+            } else if (fs.existsSync('/etc/secrets/cookies.txt')) {
+                srcPath = '/etc/secrets/cookies.txt';
+            } else if (fs.existsSync('/tmp/cookies.txt')) {
+                srcPath = '/tmp/cookies.txt';
+            }
+            if (srcPath) {
+                try {
+                    const content = fs.readFileSync(srcPath, 'utf-8');
+                    fs.writeFileSync(tmpCookiePath, content, 'utf-8');
+                    baseOptions.cookies = tmpCookiePath;
+                } catch (e) {
+                    console.warn(`[YouTube] Failed to use cookies from ${srcPath}: ${e.message}`);
                 }
             }
         }
