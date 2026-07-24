@@ -20,16 +20,25 @@ class YouTube {
 
         // yt-dlp perlu write access ke cookies file (untuk refresh cookie jar).
         // Kalo file asli di read-only filesystem (container), kita copy ke temp dir dulu.
-        // extractorArgs cuma dipake kalo ada PO Token — biarin yt-dlp auto-pilih
-        // player_client (tv_downgraded,web kalo ada cookies; visionos,android_vr,web tanpa cookies)
+        //
+        // player_client: pake client yg gak butuh PO Token.
+        //   - tv           : YouTube TV, stabil (codec: m4a)
+        //   - mweb         : mobile web (codec: opus/m4a)
+        //   - android_vr   : Android VR (codec: opus)
+        //   - visionos     : visionOS (codec: opus)
+        // Default (tv_downgraded,web) dengan cookies bisa aja gak nyediain audio-only format.
+        const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
+
+        if (config.ytdl.poToken) {
+            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken};${clientArgs}`;
+        } else {
+            baseOptions.extractorArgs = clientArgs;
+        }
+
         const fs = require('fs');
         const p = require('path');
         const os = require('os');
         const tmpCookiePath = p.join(os.tmpdir(), 'hhmusic-cookies.txt');
-
-        if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken}`;
-        }
 
         if (config.ytdl.cookiesFromBrowser) {
             // yt-dlp manage temp file sendiri untuk cookies dari browser
@@ -159,6 +168,7 @@ class YouTube {
             const info = await youtubedl(url, this.getYtDlpOptions({
                 dumpSingleJson: true,
                 preferFreeFormats: true,
+                format: 'ba/b',
             }));
 
             if (!info) {
@@ -202,9 +212,10 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // Get stream URL (use default format)
+            // Get stream URL — pake format audio-only biar gak gagal
             const info = await youtubedl(url, this.getYtDlpOptions({
                 dumpSingleJson: true,
+                format: 'ba/b',
             }));
 
             if (!info || !info.url) {

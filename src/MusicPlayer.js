@@ -613,7 +613,7 @@ class MusicPlayer {
                 
                 await youtubedl(downloadUrl, {
                     output: filepath,
-                    format: 'bestaudio/best',
+                    format: 'ba/b',
                     noCheckCertificates: true,
                     noWarnings: true,
                     preferFreeFormats: true,
