@@ -1,38 +1,67 @@
 <div align="center">
 
-# HHMusic v16.0 🎶
+```
+██╗  ██╗██╗  ██╗███╗   ███╗██╗   ██╗███████╗██╗ ██████╗
+██║  ██║██║  ██║████╗ ████║██║   ██║██╔════╝██║██╔════╝
+███████║███████║██╔████╔██║██║   ██║███████╗██║██║     
+██╔══██║██╔══██║██║╚██╔╝██║██║   ██║╚════██║██║██║     
+██║  ██║██║  ██║██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗
+╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝
 
-## WE DO NOT PROVIDE ANY SUPPORT FOR THIS OPEN-SOURCE PROJECT, WHETHER IT INVOLVES SOFTWARE ISSUES OR BUG-RELATED PROBLEMS. PLEASE DO NOT CONTACT US FOR ASSISTANCE WITH ANY ISSUES OR ERRORS YOU ENCOUNTER IN THIS PROJECT!
+```
 
-![GitHub License](https://img.shields.io/github/license/zeeinz-ux/HHMusicBOT)
+# 🎶 HHMusic v16.0
 
-[Invite your own bot](https://discord.com/oauth2/authorize) • [GitHub Repo](https://github.com/zeeinz-ux/HHMusicBOT)
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&pause=1000&color=FF6B6B&center=true&vCenter=true&width=600&lines=Discord+Music+Bot+%F0%9F%8E%A7;Lossless+Playback+%E2%9C%A8;Cinematic+Embeds+%F0%9F%96%BC%EF%B8%8F;21+Languages+%F0%9F%8C%8D;Powered+by+yt-dlp+%26+FFmpeg" alt="Typing Animation" />
 
-## Project Highlights
+<br>
+
+> **⚠️ DISCLAIMER:** We do NOT provide support for this open-source project. Please do not contact us for assistance with any issues or errors you encounter.
+
+<br>
+
+[![GitHub License](https://img.shields.io/github/license/zeeinz-ux/HHMusicBOT?style=for-the-badge&color=FF6B6B)](LICENSE)
+[![Discord.js](https://img.shields.io/badge/discord.js-v14-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.js.org)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.11.1-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
+[![yt-dlp](https://img.shields.io/badge/yt--dlp-2026-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://github.com/yt-dlp/yt-dlp)
+[![CodeFactor](https://img.shields.io/codefactor/grade/github/zeeinz-ux/HHMusicBOT?style=for-the-badge&color=00BFA6)](https://www.codefactor.io/repository/github/zeeinz-ux/HHMusicBOT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge&color=FF6B6B)](https://github.com/zeeinz-ux/HHMusicBOT/pulls)
+
+<br>
+
+[🚀 Invite Your Bot](https://discord.com/oauth2/authorize) &nbsp;•&nbsp; [📦 GitHub Repo](https://github.com/zeeinz-ux/HHMusicBOT) &nbsp;•&nbsp; [📜 License](LICENSE)
+
+<br>
+</div>
+
+---
+
+## 🚀 Project Highlights
+
 | Capability | Details |
 | --- | --- |
-| 🎛️ Dynamic Embeds | Auto-refreshing "Now Playing" cards with cover art, platform badges, queue countdowns, and localized metadata. |
-| 🪄 Smart Queue | Instant mix-ins, sequential preloading, shuffle with DJ-only guardrails, and playlist collapsing to keep channels tidy. |
-| 🔁 Loop Modes | Three-way loop toggle: Off, Track Repeat (endless current song), or Queue Repeat (restart queue when finished). |
-| 🎲 Autoplay Engine | Genre-aware autoplay with intelligent filtering—select from 20 genres (Pop, Rock, Hip-Hop, Anime, Lo-Fi, etc.) and the bot automatically queues matching music when your queue ends, filtering out tutorials, podcasts, and non-music content with smart duration and keyword detection. |
-| 💾 Local Audio Cache | All tracks are pre-downloaded and cached locally to eliminate stream interruptions, network lag, and voice crackling—delivering buffer-free playback even during peak Discord load or ISP throttling. |
-| 🛡️ Resilient Playback | Voice connection watchdog, stream retry logic, idle auto-disconnect, and graceful SIGINT shutdown. |
-| 🧠 Localization | Cached translations via `node-json-db` with runtime language switching and fallback logic. |
-| 📜 Static Lyrics | Fetches lyrics from Genius (web scraping) with LRCLIB fallback—button-only display with pagination support. |
-| ⚙️ Extensible Core | Modular providers (`src/YouTube.js`, `src/Spotify.js`, `src/SoundCloud.js`, `src/DirectLink.js`) let you add more sources quickly. |generation Discord music bot crafted with **discord.js v14**, engineered for cinematic embeds, lossless playback, and frictionless control across desktop and mobile.
+| 🎛️ **Dynamic Embeds** | Auto-refreshing "Now Playing" cards with cover art, platform badges, queue countdowns, and localized metadata. |
+| 🪄 **Smart Queue** | Instant mix-ins, sequential preloading, shuffle with DJ-only guardrails, and playlist collapsing to keep channels tidy. |
+| 🔁 **Loop Modes** | Three-way loop toggle: Off, Track Repeat (endless current song), or Queue Repeat (restart queue when finished). |
+| 🎲 **Autoplay Engine** | Genre-aware autoplay with intelligent filtering—select from 20 genres (Pop, Rock, Hip-Hop, Anime, Lo-Fi, etc.) and the bot automatically queues matching music when your queue ends, filtering out tutorials, podcasts, and non-music content with smart duration and keyword detection. |
+| 💾 **Local Audio Cache** | All tracks are pre-downloaded and cached locally to eliminate stream interruptions, network lag, and voice crackling—delivering buffer-free playback even during peak Discord load or ISP throttling. |
+| 🛡️ **Resilient Playback** | Voice connection watchdog, stream retry logic, idle auto-disconnect, and graceful SIGINT shutdown. |
+| 🧠 **Localization** | Cached translations via `node-json-db` with runtime language switching and fallback logic. |
+| 📜 **Static Lyrics** | Fetches lyrics from Genius (web scraping) with LRCLIB fallback—button-only display with pagination support. |
+| ⚙️ **Extensible Core** | Modular providers (`src/YouTube.js`, `src/Spotify.js`, `src/SoundCloud.js`, `src/DirectLink.js`) let you add more sources quickly. |
 
-</div>
+> A next-generation Discord music bot crafted with **discord.js v14**, engineered for cinematic embeds, lossless playback, and frictionless control across desktop and mobile.
 
 ---
 
 ## ✨ Why HHMusic?
 
-- **Slash-first UX** – `/play`, `/search`, `/language`, `/nowplaying`, and `/help` respond instantly with localized embeds and live-updating buttons.
-- **Platform polyglot** – Streams from YouTube, Spotify, SoundCloud, or a direct MP3/WAV/OGG link. Spotify albums, playlists, and artist radios turn into fully hydrated queues.
-- **Adaptive UI** – A two-row control deck (Pause, Skip, Stop, Queue, Shuffle, Volume) stays in sync with the audio engine and locks down expired sessions automatically.
-- **Edge-ready audio core** – Preloads entire queues, heals voice reconnections, and falls back gracefully when Discord or upstream services hiccup.
-- **Global voice** – 21 fully translated language packs shipped out-of-the-box with instant server switching.
-- **Privacy-first** – Stores only the language preference per guild in a local JSON database. No chat logs, no audio recordings.
+- **🎮 Slash-first UX** – `/play`, `/search`, `/language`, `/nowplaying`, and `/help` respond instantly with localized embeds and live-updating buttons.
+- **🌐 Platform polyglot** – Streams from YouTube, Spotify, SoundCloud, or a direct MP3/WAV/OGG link. Spotify albums, playlists, and artist radios turn into fully hydrated queues.
+- **🖥️ Adaptive UI** – A two-row control deck (Pause, Skip, Stop, Queue, Shuffle, Volume) stays in sync with the audio engine and locks down expired sessions automatically.
+- **⚡ Edge-ready audio core** – Preloads entire queues, heals voice reconnections, and falls back gracefully when Discord or upstream services hiccup.
+- **🌍 Global voice** – 21 fully translated language packs shipped out-of-the-box with instant server switching.
+- **🔒 Privacy-first** – Stores only the language preference per guild in a local JSON database. No chat logs, no audio recordings.
 
 ---
 
@@ -45,7 +74,7 @@
 5. [Configuration](#configuration)
 6. [Spotify API Setup](#spotify-api-setup)
 7. [Genius API Setup (Optional)](#genius-api-setup-optional)
-8. [YT-DLP Cookie Add](#youtube-cookie-setup)
+8. [YouTube Cookie Setup](#youtube-cookie-setup)
 9. [Sharding for Large Bots (1000+ Servers)](#sharding-for-large-bots-1000-servers)
 10. [Slash Commands & Controls](#slash-commands--controls)
 11. [Language Support](#language-support)
@@ -56,38 +85,38 @@
 
 ---
 
-## Folder Anatomy
+## 📁 Folder Anatomy
 
 ```
 discord-musicbot/
-├── commands/           # Slash command handlers (play, help, search, language, ...)
-├── events/             # Button & modal controllers for playback UI
-├── src/                # Core services: MusicPlayer, MusicEmbedManager, providers
-├── languages/          # 21 JSON language packs
-├── database/           # node-json-db store for guild language preferences
-├── config.js           # Central configuration + env fallbacks
-├── index.js            # Bot bootstrap, client wiring, voice auto-cleanup
-├── LICENSE             # MIT License
-├── PRIVACY_POLICY.md   # Data handling details
-└── TERMS_OF_SERVICE.md # Acceptable use guidelines
+├── 📂 commands/           # Slash command handlers (play, help, search, ...)
+├── 📂 events/             # Button & modal controllers for playback UI
+├── 📂 src/                # Core services: MusicPlayer, MusicEmbedManager, providers
+├── 📂 languages/          # 21 JSON language packs
+├── 📂 database/           # node-json-db store for guild language preferences
+├── 📄 config.js           # Central configuration + env fallbacks
+├── 📄 index.js            # Bot bootstrap, client wiring, voice auto-cleanup
+├── 📄 LICENSE             # MIT License
+├── 📄 PRIVACY_POLICY.md   # Data handling details
+└── 📄 TERMS_OF_SERVICE.md # Acceptable use guidelines
 ```
 
 ---
 
-## Prerequisites
+## 📋 Prerequisites
 
-- **Node.js** ≥ 24+ (LTS recommended) and npm.
-- **Git** for cloning the repository.
-- **Discord application** with a bot user created in the [Discord Developer Portal](https://discord.com/developers/applications).
-- *(Optional but recommended)* A VPS or host with stable bandwidth and low latency to Discord voice regions.
+- **🟢 Node.js** ≥ 24+ (LTS recommended) and npm.
+- **📦 Git** for cloning the repository.
+- **🤖 Discord application** with a bot user created in the [Discord Developer Portal](https://discord.com/developers/applications).
+- **☁️ (Optional but recommended)** A VPS or host with stable bandwidth and low latency to Discord voice regions.
 
 > ℹ️ `ffmpeg-static` ships with the project. You do **not** need a system-wide FFmpeg unless you prefer using a custom build.
 
 ---
 
-## Quick Start
+## ⚡ Quick Start
 
-### Windows fast track
+### 🪟 Windows Fast Track
 
 ```powershell
 # Run from the repo root
@@ -96,11 +125,11 @@ discord-musicbot/
 .\start.bat
 ```
 
-`setup.bat` verifies Node.js/npm, installs dependencies, and scaffolds a `.env` template if you don’t have one yet. `start.bat` makes sure your environment is ready and launches the bot via `npm run start`.
+`setup.bat` verifies Node.js/npm, installs dependencies, and scaffolds a `.env` template if you don't have one yet. `start.bat` makes sure your environment is ready and launches the bot via `npm run start`.
 
-### Cross-platform manual steps
+### 🐧 Cross-Platform Manual Steps
 
-```powershell
+```bash
 # 1. Clone & enter
 git clone https://github.com/zeeinz-ux/HHMusicBOT.git
 cd discord-musicbot
@@ -109,11 +138,11 @@ cd discord-musicbot
 npm install
 
 # 3. Configure secrets (see below)
-Copy-Item .env .env.backup -ErrorAction SilentlyContinue
+cp .env.example .env
 # Edit .env with your token, client ID, Spotify credentials, etc.
 
 # 4. Boot the bot
-npm run start
+npm start
 # or
 node index.js
 ```
@@ -122,11 +151,11 @@ Slash commands register automatically when the bot starts. Guild-scoped deployme
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 HHMusic reads from both `config.js` defaults and environment variables via `.env`. Update whichever approach fits your hosting workflow.
 
-### `.env` Cheat Sheet
+### 📝 `.env` Cheat Sheet
 
 ```dotenv
 DISCORD_TOKEN=your_bot_token
@@ -144,7 +173,7 @@ COOKIES_FROM_BROWSER=chrome
 COOKIES_FILE=./cookies.txt
 ```
 
-### Key Settings
+### 🔑 Key Settings
 
 | Setting | Location | Purpose |
 | --- | --- | --- |
@@ -162,7 +191,7 @@ COOKIES_FILE=./cookies.txt
 
 ---
 
-## Spotify API Setup
+## 🎵 Spotify API Setup
 
 1. Visit the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/), sign in, and click **Create an App**.
 2. Name your integration (e.g., `HHMusic Bot`) and enable **Web API**.
@@ -175,11 +204,11 @@ Without these credentials Spotify requests fall back to zero results.
 
 ---
 
-## Genius API Setup (Optional)
+## 🎤 Genius API Setup (Optional)
 
 HHMusic uses **web scraping** by default to fetch lyrics from Genius—no API key required! However, if you want **higher rate limits** and **faster responses**, you can optionally add Genius API credentials.
 
-### Why Use Genius API?
+### 🎯 Why Use Genius API?
 
 | Without API Key | With API Key |
 | --- | --- |
@@ -187,7 +216,7 @@ HHMusic uses **web scraping** by default to fetch lyrics from Genius—no API ke
 | ✅ No registration needed | ✅ Faster response times |
 | ⚠️ May hit rate limits on heavy use | ✅ Official API support |
 
-### Setup Steps
+### 📋 Setup Steps
 
 1. Visit the [Genius API Clients Page](https://genius.com/api-clients), sign in with your Genius account (or create one).
 2. Click **New API Client** and fill in:
@@ -204,7 +233,7 @@ HHMusic uses **web scraping** by default to fetch lyrics from Genius—no API ke
 
 > 💡 **Note:** Even without credentials, lyrics work perfectly! The bot automatically scrapes Genius.com and falls back to LRCLIB if needed.
 
-### Lyrics Priority
+### 📊 Lyrics Priority
 
 The bot fetches lyrics in this order:
 1. **Genius** (with API key if provided, otherwise web scraping)
@@ -213,11 +242,11 @@ The bot fetches lyrics in this order:
 
 ---
 
-## YouTube Cookie Setup
+## 🍪 YouTube Cookie Setup
 
 YouTube may occasionally block yt-dlp with a "Sign in to confirm you're not a bot" error. To fix this, you need to provide browser cookies to yt-dlp.
 
-### Method 1: Using Browser Cookies (Recommended)
+### 🌐 Method 1: Using Browser Cookies (Recommended)
 
 1. Open your `.env` file or set environment variables
 2. Add one of the following based on your browser:
@@ -234,30 +263,25 @@ YouTube may occasionally block yt-dlp with a "Sign in to confirm you're not a bo
    # For Safari users
    COOKIES_FROM_BROWSER=safari
    ```
-
 3. Make sure you're logged into YouTube in that browser
 4. Restart your bot
 
 **Note:** This method automatically extracts cookies from your browser, so you need to be logged into YouTube in the specified browser.
 
-### Method 2: Using cookies.txt File
+### 📄 Method 2: Using cookies.txt File
 
 1. Install a browser extension to export cookies:
    - **Chrome/Edge:** [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
    - **Firefox:** [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/)
-
 2. Go to YouTube while logged in and export cookies to a file named `cookies.txt`
-
 3. Place `cookies.txt` in your bot's root directory (same folder as `index.js`)
-
 4. Add to your `.env` file:
    ```env
    COOKIES_FILE=./cookies.txt
    ```
-
 5. Restart your bot
 
-### Verifying the Fix
+### ✅ Verifying the Fix
 
 After setting up cookies, test with:
 ```bash
@@ -270,11 +294,11 @@ If you still see bot detection errors:
 - Regenerate the cookies.txt file
 - Try a different browser
 
-**Security Note:** Keep your `cookies.txt` file private and never share it, as it contains your YouTube session data.
+**🔒 Security Note:** Keep your `cookies.txt` file private and never share it, as it contains your YouTube session data.
 
 ---
 
-## Sharding for Large Bots (1000+ Servers)
+## ⚡ Sharding for Large Bots (1000+ Servers)
 
 When your bot reaches **1,000+ servers**, Discord **requires** you to use sharding to distribute the load across multiple processes. HHMusic includes a fully automated sharding system powered by Discord.js's `ShardingManager`.
 
@@ -401,7 +425,7 @@ SHARD_RESPAWN=false
 
 ---
 
-## Slash Commands & Controls
+## 🎮 Slash Commands & Controls
 
 | Command | What it does |
 | --- | --- |
@@ -411,7 +435,7 @@ SHARD_RESPAWN=false
 | `/language` | Opens a flag button wall for instant localization (cached per guild). |
 | `/help` | Gorgeous, localized feature tour + live stats and support links. |
 
-### On-embed Controls
+### 🕹️ On-embed Controls
 
 - **⏸️ / ▶️ Pause & Resume** – Auth-limited to DJs, admins, or the original requester.
 - **⏭️ Skip** – Jumps to the next queued item (requires at least 1 upcoming track).
@@ -430,7 +454,7 @@ All button sessions carry a short-lived signature, preventing stale interactions
 
 HHMusic features an intelligent autoplay engine that keeps the music flowing when your queue runs out.
 
-### How It Works
+### 🔄 How It Works
 
 1. **Enable Autoplay** – Click the 🎲 Autoplay button on the now-playing embed
 2. **Choose Your Genre** – Select from 20 carefully curated genres:
@@ -439,7 +463,7 @@ HHMusic features an intelligent autoplay engine that keeps the music flowing whe
    - 🎹 Disco, Punk, Ambient, or Random (all genres)
 3. **Sit Back & Enjoy** – When your queue ends, the bot automatically searches and queues relevant tracks
 
-### Smart Content Filtering
+### 🧠 Smart Content Filtering
 
 The autoplay system includes sophisticated filters to ensure you only get actual music:
 
@@ -462,9 +486,7 @@ Automatically skips content containing:
 - Blocks playlist-style titles with many brackets
 - Prioritizes official music videos and verified uploads
 
-### Genre-Specific Keywords
-
-Each genre uses optimized search terms to find the best content:
+### 🎯 Genre-Specific Keywords
 
 | Genre | Search Strategy |
 | --- | --- |
@@ -474,14 +496,14 @@ Each genre uses optimized search terms to find the best content:
 | **Electronic** | "edm music", "electronic dance music", "house music official" |
 | **Others** | Similarly optimized with "official", year markers, and quality indicators |
 
-### Fallback Mechanism
+### 🔁 Fallback Mechanism
 
 If the first search yields no suitable tracks after filtering:
 - Automatically retries with a different keyword from the genre pool
 - Ensures you always get music, never silence
 - Logs the entire process for transparency
 
-### Local Caching Integration
+### 💾 Local Caching Integration
 
 All autoplay tracks leverage the same local cache system as manual plays:
 - **Pre-downloaded** before playback starts
@@ -489,7 +511,7 @@ All autoplay tracks leverage the same local cache system as manual plays:
 - **Instant playback** from local storage
 - **Automatic cleanup** when tracks finish
 
-### Console Transparency
+### 📊 Console Transparency
 
 Watch the autoplay engine work in real-time:
 
@@ -503,7 +525,7 @@ Watch the autoplay engine work in real-time:
 🎲 Autoplay: Now playing "YOASOBI - アイドル (Idol) [Official Music Video]"
 ```
 
-### Usage Tips
+### 💡 Usage Tips
 
 - **Random Mode** – Can't decide? Select "Random" to get music from all genres
 - **Queue Priority** – Manually added tracks always play before autoplay suggestions
@@ -516,7 +538,7 @@ Watch the autoplay engine work in real-time:
 
 HHMusic eliminates playback interruptions by pre-downloading and caching all audio locally before streaming to Discord.
 
-### Why Local Caching?
+### 🎯 Why Local Caching?
 
 Traditional Discord bots stream directly from YouTube/Spotify/SoundCloud URLs, which causes:
 - ❌ Random buffering and stuttering during playback
@@ -530,7 +552,7 @@ Traditional Discord bots stream directly from YouTube/Spotify/SoundCloud URLs, w
 - ✅ Zero dependency on external stream stability during playback
 - ✅ Instant resume after voice reconnections
 
-### How It Works
+### ⚙️ How It Works
 
 1. **Queue Detection** – When you add a track with `/play` or autoplay triggers
 2. **Background Download** – Track downloads silently while previous song plays
@@ -538,7 +560,7 @@ Traditional Discord bots stream directly from YouTube/Spotify/SoundCloud URLs, w
 4. **Local Streaming** – FFmpeg streams the cached file to Discord voice
 5. **Automatic Cleanup** – Files delete after playback to save disk space
 
-### Console Output Example
+### 📋 Console Output Example
 
 ```
 ⬇️ Pre-downloading: Song Title
@@ -552,7 +574,7 @@ Traditional Discord bots stream directly from YouTube/Spotify/SoundCloud URLs, w
 🗑️ Deleted: track_abc123.opus
 ```
 
-### Technical Details
+### 🔧 Technical Details
 
 **Cache Directory:**
 - Location: `audio_cache/` (auto-created on first run)
@@ -577,7 +599,7 @@ Traditional Discord bots stream directly from YouTube/Spotify/SoundCloud URLs, w
 - **Reliable autoplay** – pre-cached tracks guarantee smooth transitions
 - **Network resilience** – download failures don't affect current playback
 
-### Disk Space Considerations
+### 💽 Disk Space Considerations
 
 Average track sizes:
 - **3-5 minutes:** ~3-8 MB
@@ -586,30 +608,34 @@ Average track sizes:
 
 The cache system requires minimal disk space and automatically manages itself. For VPS deployments, ensure at least **500 MB free space** for comfortable operation with large queues.
 
-
-
 ---
 
-## Language Support
+## 🌍 Language Support
 
 Out-of-the-box translations (and matching flag buttons):
 
-**Arabic**, **German**, **English**, **Spanish**, **French**, **Indonesian**, **Italian**, **Japanese**, **Dutch**, **Portuguese**, **Russian**, **Turkish**, **Traditional Chinese**, **Simplified Chinese**, **Hindi**, **Finnish**, **Danish**, **Norwegian**, **Polish**, **Korean**, **Swedish**
+| | | | | |
+|---|---|---|---|---|
+| 🇸🇦 Arabic | 🇩🇪 German | 🇬🇧 English | 🇪🇸 Spanish | 🇫🇷 French |
+| 🇮🇩 Indonesian | 🇮🇹 Italian | 🇯🇵 Japanese | 🇳🇱 Dutch | 🇵🇹 Portuguese |
+| 🇷🇺 Russian | 🇹🇷 Turkish | 🇹🇼 Traditional Chinese | 🇨🇳 Simplified Chinese | 🇮🇳 Hindi |
+| 🇫🇮 Finnish | 🇩🇰 Danish | 🇳🇴 Norwegian | 🇵🇱 Polish | 🇰🇷 Korean |
+| 🇸🇪 Swedish | | | | |
 
 Add your own by copying `languages/en.json`, translating strings, and restarting the bot. The `LanguageManager` hot-loads every JSON file in `languages/`.
 
 ---
 
-## Deployment Tips
+## 🚀 Deployment Tips
 
-- **Testing Guild** – Set `GUILD_ID` during development to avoid the global propagation delay. Remove it before production to reach every server automatically.
-- **Process Manager** – Use `pm2`, `systemd`, or Docker to keep the bot alive and restart on crashes. Remember to persist the `database/languages.json` file if you containerize.
-- **Logging** – Leverage the built-in Chalk-colored console output. Redirect stdout/stderr to log files for long-term monitoring.
-- **Scaling** – The bot maintains one voice connection per guild. Horizontal scaling requires a shared state & queue (Redis, REST API, etc.) — future roadmap material.
+- **🧪 Testing Guild** – Set `GUILD_ID` during development to avoid the global propagation delay. Remove it before production to reach every server automatically.
+- **🛡️ Process Manager** – Use `pm2`, `systemd`, or Docker to keep the bot alive and restart on crashes. Remember to persist the `database/languages.json` file if you containerize.
+- **📝 Logging** – Leverage the built-in Chalk-colored console output. Redirect stdout/stderr to log files for long-term monitoring.
+- **📈 Scaling** – The bot maintains one voice connection per guild. Horizontal scaling requires a shared state & queue (Redis, REST API, etc.) — future roadmap material.
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
@@ -619,27 +645,49 @@ Add your own by copying `languages/en.json`, translating strings, and restarting
 | Buttons stop working mid-song | Interactions expire after Discord's cache TTL or when a new session is generated. Use `/play` again to refresh the deck. |
 | Lyrics button disabled or missing | The bot fetches from Genius first (web scraping or API), then LRCLIB. If both fail, no lyrics button appears. Check console for fetch errors. |
 | Command language incorrect | Run `/language`, select your flag, and ensure `database/languages.json` is writable. |
-| **YouTube bot detection error** | **YouTube requires bot verification via cookies. See [YouTube Cookie Setup](#youtube-cookie-setup) below for detailed instructions.** |
+| **YouTube bot detection error** | **YouTube requires bot verification via cookies. See [YouTube Cookie Setup](#youtube-cookie-setup) for detailed instructions.** |
 
 ---
 
-## Privacy & Legal
+## 🔒 Privacy & Legal
 
-- [Privacy Policy](./PRIVACY_POLICY.md) – Exactly what data we store (guild ID + language preference) and how to request deletion.
-- [Terms of Service](./TERMS_OF_SERVICE.md) – Acceptable use, liability limits, and contact info.
-- [License](./LICENSE) – MIT. Use it privately or commercially — just keep the notice.
+- [📜 Privacy Policy](./PRIVACY_POLICY.md) – Exactly what data we store (guild ID + language preference) and how to request deletion.
+- [📜 Terms of Service](./TERMS_OF_SERVICE.md) – Acceptable use, liability limits, and contact info.
+- [📜 License](./LICENSE) – MIT. Use it privately or commercially — just keep the notice.
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository and create a feature branch.
 2. Run `npm install` to load dependencies.
 3. Add or refine features (translation packs, UI tweaks, new providers).
 4. Open a pull request with a clear description and screenshots/console logs where relevant.
 
-
 ---
 
+<div align="center">
 
-Happy streaming, and keep the servers grooving! 🎧
+```
+██╗  ██╗██╗  ██╗███╗   ███╗██╗   ██╗███████╗██╗ ██████╗
+██║  ██║██║  ██║████╗ ████║██║   ██║██╔════╝██║██╔════╝
+███████║███████║██╔████╔██║██║   ██║███████╗██║██║     
+██╔══██║██╔══██║██║╚██╔╝██║██║   ██║╚════██║██║██║     
+██║  ██║██║  ██║██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗
+╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝
+
+```
+
+**Happy streaming, and keep the servers grooving! 🎧**
+
+<br>
+
+[![Discord](https://img.shields.io/badge/Discord-HHMusic-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/7FMt59Urx7)
+[![GitHub Stars](https://img.shields.io/github/stars/zeeinz-ux/HHMusicBOT?style=for-the-badge&logo=github&color=FFD700)](https://github.com/zeeinz-ux/HHMusicBOT/stargazers)
+[![Made with ❤️](https://img.shields.io/badge/Made%20with-%E2%9D%A4%EF%B8%8F-FF6B6B?style=for-the-badge)](https://github.com/zeeinz-ux/HHMusicBOT)
+
+<br>
+
+<img src="https://profile-counter.glitch.me/HHMusicBOT/count.svg" alt="Visitor counter" />
+
+</div>
