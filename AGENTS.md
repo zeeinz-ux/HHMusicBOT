@@ -39,3 +39,7 @@ npm test                          # node --check index.js (syntax check only —
 - **Music sources**: `src/YouTube.js`, `src/Spotify.js`, `src/SoundCloud.js`, `src/DirectLink.js`
 - **Persistence**: `database/` — JSON files (`languages.json`, `playerState.json`, `spotify_token.json`)
 - **Audio cache**: `audio_cache/` — `track_[MD5].opus` files, cleaned on startup
+- **Render Oregon IP blocked by YouTube (2026-07)**: `Sign in to confirm you're not a bot` from Render's Oregon IP range even with valid cookies. Solutions: switch Render region (Frankfurt/Singapore), use a proxy, or migrate to Oracle Cloud free tier (24GB RAM, clean IPs).
+- **`jsRuntimes: 'node'` required** (`src/YouTube.js:14`): yt-dlp 2026.07+ needs a JS runtime when using logged-in cookies. Only Deno is auto-detected; add `jsRuntimes: 'node'` explicitly.
+- **`player_client=tv,mweb,android_vr,visionos`** (`src/YouTube.js:31`): These clients don't require PO Token. Default `tv_downgraded,web` may not serve audio-only formats. Use with `jsRuntimes: 'node'` and `format: 'ba/b'` for best compatibility.
+- **Memory limit for free tier** (`Dockerfile`): `NODE_OPTIONS=--max-old-space-size=128` keeps heap under 512MB. Background download skipped when low memory detected.
