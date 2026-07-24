@@ -18,29 +18,32 @@ class YouTube {
             ...extraOptions
         };
 
-        const webArgs = 'youtube:player_skip=webpage;player_client=android';
+        // player_client=android : gak butuh PO Token, format URL valid
+        // cookies dipake buat bypass "Sign in to confirm" di webpage
+        const clientArgs = 'youtube:player_client=android';
+
         if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_skip=webpage;player_client=android`;
+            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};${clientArgs}`;
         } else if (config.ytdl.cookiesFromBrowser) {
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
-            baseOptions.extractorArgs = webArgs;
+            baseOptions.extractorArgs = clientArgs;
         } else if (config.ytdl.cookiesFile) {
             const fs = require('fs');
             const p = require('path');
             const cookiesPath = p.resolve(config.ytdl.cookiesFile);
             if (fs.existsSync(cookiesPath)) {
                 baseOptions.cookies = cookiesPath;
-                baseOptions.extractorArgs = webArgs;
+                baseOptions.extractorArgs = clientArgs;
             } else {
                 console.warn(`[YouTube] cookies.txt not found at ${cookiesPath}, using android client`);
-                baseOptions.extractorArgs = webArgs;
+                baseOptions.extractorArgs = clientArgs;
             }
         } else {
             const fs = require('fs');
             const tmpCookiesPath = '/tmp/cookies.txt';
             if (fs.existsSync(tmpCookiesPath)) {
                 baseOptions.cookies = tmpCookiesPath;
-                baseOptions.extractorArgs = webArgs;
+                baseOptions.extractorArgs = clientArgs;
                 console.log(`[YouTube] Using cookies from ${tmpCookiesPath}`);
             } else {
                 const renderSecretPath = '/etc/secrets/cookies.txt';
@@ -49,14 +52,14 @@ class YouTube {
                         const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
                         fs.writeFileSync(tmpCookiesPath, cookiesContent, 'utf-8');
                         baseOptions.cookies = tmpCookiesPath;
-                        baseOptions.extractorArgs = webArgs;
+                        baseOptions.extractorArgs = clientArgs;
                         console.log(`[YouTube] Copied and using cookies from ${tmpCookiesPath}`);
                     } catch (e) {
                         console.warn(`[YouTube] Failed to copy secret file: ${e.message}`);
-                        baseOptions.extractorArgs = webArgs;
+                        baseOptions.extractorArgs = clientArgs;
                     }
                 } else {
-                    baseOptions.extractorArgs = webArgs;
+                    baseOptions.extractorArgs = clientArgs;
                 }
             }
         }
