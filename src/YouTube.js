@@ -18,9 +18,9 @@ class YouTube {
             ...extraOptions
         };
 
-        // player_client=android : gak butuh PO Token, format URL valid
-        // cookies dipake buat bypass "Sign in to confirm" di webpage
-        const clientArgs = 'youtube:player_client=android';
+        // player_client=tv : gak butuh PO Token sama sekali
+        // cookies dipake biar format gak DRM
+        const clientArgs = 'youtube:player_client=tv';
 
         if (config.ytdl.poToken) {
             baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};${clientArgs}`;
