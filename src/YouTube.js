@@ -213,38 +213,56 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // Get stream URL — pake format audio-only biar gak gagal
-            const info = await youtubedl(url, this.getYtDlpOptions({
-                dumpSingleJson: true,
-                format: 'ba/b',
-            }));
+            // Coba pake cookies dulu, kalo gagal coba tanpa cookies
+            const attempts = [
+                { name: 'with cookies', opts: {} },
+                { name: 'no cookies', opts: { cookies: undefined, cookiesFromBrowser: undefined } },
+            ];
 
-            if (!info || !info.url) {
-                const errorMsg = guildId ? await LanguageManager.getTranslation(guildId, 'youtube.no_stream_url') : 'No stream URL found';
-                throw new Error(errorMsg);
+            let lastError;
+            for (const attempt of attempts) {
+                try {
+                    const opts = this.getYtDlpOptions({
+                        dumpSingleJson: true,
+                        format: 'ba/b',
+                    });
+                    if (attempt.opts.cookies === undefined) {
+                        delete opts.cookies;
+                        delete opts.cookiesFromBrowser;
+                    }
+                    const info = await youtubedl(url, opts);
+
+                    if (info && info.url) {
+                        const baseUrl = info.url;
+                        const canSeek = /googlevideo\.com/i.test(baseUrl);
+                        let finalUrl = baseUrl;
+
+                        const seekSeconds = Math.max(0, Number(startSeconds) || 0);
+                        if (seekSeconds > 0 && canSeek) {
+                            const startMs = Math.floor(seekSeconds * 1000);
+                            const separator = baseUrl.includes('?') ? '&' : '?';
+                            finalUrl = `${baseUrl}${separator}begin=${startMs}`;
+                        }
+
+                        return {
+                            url: finalUrl,
+                            rawUrl: baseUrl,
+                            type: info.acodec && info.acodec.includes('opus') ? 'opus' : 'arbitrary',
+                            duration: info.duration || 0,
+                            bitrate: info.abr || info.tbr || 0,
+                            canSeek,
+                            format: info.format,
+                            httpHeaders: info.http_headers || {}
+                        };
+                    }
+                    lastError = new Error('No stream URL found');
+                } catch (e) {
+                    lastError = e;
+                    console.log(`[YouTube] getStream ${attempt.name} gagal, coba tanpa cookies...`);
+                }
             }
 
-            const baseUrl = info.url;
-            const canSeek = /googlevideo\.com/i.test(baseUrl);
-            let finalUrl = baseUrl;
-
-            const seekSeconds = Math.max(0, Number(startSeconds) || 0);
-            if (seekSeconds > 0 && canSeek) {
-                const startMs = Math.floor(seekSeconds * 1000);
-                const separator = baseUrl.includes('?') ? '&' : '?';
-                finalUrl = `${baseUrl}${separator}begin=${startMs}`;
-            }
-
-            return {
-                url: finalUrl,
-                rawUrl: baseUrl,
-                type: info.acodec && info.acodec.includes('opus') ? 'opus' : 'arbitrary',
-                duration: info.duration || 0,
-                bitrate: info.abr || info.tbr || 0,
-                canSeek,
-                format: info.format,
-                httpHeaders: info.http_headers || {}
-            };
+            throw lastError;
 
         } catch (error) {
             throw error;
