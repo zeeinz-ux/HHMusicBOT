@@ -213,56 +213,61 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // Coba pake cookies dulu, kalo gagal coba tanpa cookies
-            const attempts = [
-                { name: 'with cookies', opts: {} },
-                { name: 'no cookies', opts: { cookies: undefined, cookiesFromBrowser: undefined } },
-            ];
+            // Spawn yt-dlp as a direct stream to stdout — avoids 403 on fetch
+            const { spawn } = require('child_process');
 
-            let lastError;
-            for (const attempt of attempts) {
-                try {
-                    const opts = this.getYtDlpOptions({
-                        dumpSingleJson: true,
-                        format: 'ba/b',
-                    });
-                    if (attempt.opts.cookies === undefined) {
-                        delete opts.cookies;
-                        delete opts.cookiesFromBrowser;
-                    }
-                    const info = await youtubedl(url, opts);
+            // Don't use cookies for streaming — they trigger n-challenge which fails.
+            // player_client=tv,mweb,android_vr,visionos works without cookies.
+            const flags = this.getYtDlpOptions({
+                output: '-',
+                format: 'ba/b',
+            });
+            delete flags.cookies;
+            delete flags.cookiesFromBrowser;
 
-                    if (info && info.url) {
-                        const baseUrl = info.url;
-                        const canSeek = /googlevideo\.com/i.test(baseUrl);
-                        let finalUrl = baseUrl;
-
-                        const seekSeconds = Math.max(0, Number(startSeconds) || 0);
-                        if (seekSeconds > 0 && canSeek) {
-                            const startMs = Math.floor(seekSeconds * 1000);
-                            const separator = baseUrl.includes('?') ? '&' : '?';
-                            finalUrl = `${baseUrl}${separator}begin=${startMs}`;
-                        }
-
-                        return {
-                            url: finalUrl,
-                            rawUrl: baseUrl,
-                            type: info.acodec && info.acodec.includes('opus') ? 'opus' : 'arbitrary',
-                            duration: info.duration || 0,
-                            bitrate: info.abr || info.tbr || 0,
-                            canSeek,
-                            format: info.format,
-                            httpHeaders: info.http_headers || {}
-                        };
-                    }
-                    lastError = new Error('No stream URL found');
-                } catch (e) {
-                    lastError = e;
-                    console.log(`[YouTube] getStream ${attempt.name} gagal, coba tanpa cookies...`);
+            const args = [url];
+            for (const [key, val] of Object.entries(flags)) {
+                if (val === false || val === null || val === undefined) continue;
+                const k = key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+                if (val === true) {
+                    args.push(`--${k}`);
+                } else if (Array.isArray(val)) {
+                    for (const v of val) args.push(`--${k}`, String(v));
+                } else {
+                    args.push(`--${k}`, String(val));
                 }
             }
 
-            throw lastError;
+            // Get metadata first (dumpSingleJson)
+            const info = await youtubedl(url, this.getYtDlpOptions({ dumpSingleJson: true }));
+
+            const duration = info?.duration || 0;
+            const bitrate = info?.abr || info?.tbr || 0;
+
+            // Spawn the streaming process
+            const ytdlpStream = spawn(youtubedl.binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+            // Collect stderr for debugging (keep only last line)
+            let stderrLast = '';
+            ytdlpStream.stderr.on('data', d => {
+                const lines = d.toString().trim().split('\n');
+                stderrLast = lines[lines.length - 1] || stderrLast;
+            });
+
+            // Small delay to catch immediate spawn errors
+            await new Promise(resolve => setImmediate(resolve));
+
+            return {
+                stream: ytdlpStream.stdout,
+                url: null,
+                rawUrl: null,
+                type: info?.acodec?.includes('opus') ? 'opus' : 'arbitrary',
+                duration,
+                bitrate,
+                canSeek: false,
+                format: info?.format || 'unknown',
+                httpHeaders: {}
+            };
 
         } catch (error) {
             throw error;

@@ -36,7 +36,7 @@ if (!fsSync.existsSync(CACHE_DIR)) {
     fsSync.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-const isLowMemory = process.env.NODE_OPTIONS?.includes('max-old-space-size');
+const isLowMemory = true;
 
 let cachedFetch;
 async function ensureFetch() {
@@ -902,11 +902,11 @@ class MusicPlayer {
                     const fetch = await ensureFetch();
                     
                     try {
-                        const response = await fetch(streamUrl_final, {
-                            headers: streamInfo?.httpHeaders || {
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                            }
-                        });
+                        const fetchHeaders = Object.assign({},
+                            streamInfo?.httpHeaders || {},
+                            { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                        );
+                        const response = await fetch(streamUrl_final, { headers: fetchHeaders });
                         
                         if (!response.ok) throw new Error(`Failed to fetch stream: ${response.status}`);
                         
@@ -960,7 +960,7 @@ class MusicPlayer {
                         console.error('❌ FFmpeg streaming error:', err.message);
                     });
 
-                    audioStream.pipe(ffmpegProcess);
+                    audioStream.pipe(ffmpegProcess, { highWaterMark: 1024 * 1024 });
 
                     this.resource = createAudioResource(ffmpegProcess, {
                         inputType: StreamType.Raw,
