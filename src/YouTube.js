@@ -18,47 +18,45 @@ class YouTube {
             ...extraOptions
         };
 
-        // Auth öncelik sırası: PO Token (mweb recommended) > Browser Cookie > Cookie Dosyası > Android client (fallback)
+        const webArgs = 'youtube:player_skip=webpage;player_client=android';
         if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=mweb,web`;
+            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_skip=webpage;player_client=android`;
         } else if (config.ytdl.cookiesFromBrowser) {
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
-            baseOptions.extractorArgs = 'youtube:player_client=web,mweb,android';
+            baseOptions.extractorArgs = webArgs;
         } else if (config.ytdl.cookiesFile) {
             const fs = require('fs');
             const p = require('path');
             const cookiesPath = p.resolve(config.ytdl.cookiesFile);
             if (fs.existsSync(cookiesPath)) {
                 baseOptions.cookies = cookiesPath;
-                baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=web,mweb,android';
+                baseOptions.extractorArgs = webArgs;
             } else {
-                console.warn(`[YouTube] cookies.txt not found at ${cookiesPath}, falling back to android client`);
-                baseOptions.extractorArgs = 'youtube:player_client=android';
+                console.warn(`[YouTube] cookies.txt not found at ${cookiesPath}, using android client`);
+                baseOptions.extractorArgs = webArgs;
             }
         } else {
-            // Check for Render secret file as final fallback (use /tmp copy since /etc/secrets is read-only)
             const fs = require('fs');
             const tmpCookiesPath = '/tmp/cookies.txt';
             if (fs.existsSync(tmpCookiesPath)) {
                 baseOptions.cookies = tmpCookiesPath;
-                baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=web,mweb,android';
+                baseOptions.extractorArgs = webArgs;
                 console.log(`[YouTube] Using cookies from ${tmpCookiesPath}`);
             } else {
-                // Also check /etc/secrets/cookies.txt directly as last resort
                 const renderSecretPath = '/etc/secrets/cookies.txt';
                 if (fs.existsSync(renderSecretPath)) {
                     try {
                         const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
                         fs.writeFileSync(tmpCookiesPath, cookiesContent, 'utf-8');
                         baseOptions.cookies = tmpCookiesPath;
-                        baseOptions.extractorArgs = 'youtubetab:skip=authcheck;youtube:player_client=web,mweb,android';
+                        baseOptions.extractorArgs = webArgs;
                         console.log(`[YouTube] Copied and using cookies from ${tmpCookiesPath}`);
                     } catch (e) {
                         console.warn(`[YouTube] Failed to copy secret file: ${e.message}`);
-                        baseOptions.extractorArgs = 'youtube:player_client=android';
+                        baseOptions.extractorArgs = webArgs;
                     }
                 } else {
-                    baseOptions.extractorArgs = 'youtube:player_client=android';
+                    baseOptions.extractorArgs = webArgs;
                 }
             }
         }
