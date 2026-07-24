@@ -18,13 +18,9 @@ class YouTube {
             ...extraOptions
         };
 
-        // Auth öncelik sırası: PO Token > Browser Cookie > Cookie Dosyası > Android client (fallback)
-        // android works without a JS runtime on yt-dlp ≥ 2026.04 and returns a real
-        // googlevideo.com audio URL (itag 251 webm/opus). It is paired with `web`
-        // as a secondary in the cookies paths so a single blocked client does not
-        // make the cookies path useless.
+        // Auth öncelik sırası: PO Token (mweb recommended) > Browser Cookie > Cookie Dosyası > Android client (fallback)
         if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=android,web`;
+            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=mweb,web`;
         } else if (config.ytdl.cookiesFromBrowser) {
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
             baseOptions.extractorArgs = 'youtube:player_client=android,web';

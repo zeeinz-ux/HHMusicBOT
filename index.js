@@ -15,7 +15,22 @@ if (process.env.COOKIES_CONTENT && config.ytdl.cookiesFile) {
         fs.writeFileSync(cookiesPath, process.env.COOKIES_CONTENT, 'utf-8');
         console.log(`[COOKIES] Written COOKIES_CONTENT to ${cookiesPath}`);
     } catch (e) {
-        console.warn(`[COOKIES] Failed to write cookies file: ${e.message}`);
+        console.warn(`[COOKIES] Failed to write COOKIES_CONTENT: ${e.message}`);
+    }
+}
+
+// Copy Render secret file (/etc/secrets/cookies.txt) to writable location
+const renderSecretPath = '/etc/secrets/cookies.txt';
+if (config.ytdl.cookiesFile) {
+    const cookiesPath = path.resolve(config.ytdl.cookiesFile);
+    try {
+        if (!fs.existsSync(cookiesPath) && fs.existsSync(renderSecretPath)) {
+            const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
+            fs.writeFileSync(cookiesPath, cookiesContent, 'utf-8');
+            console.log(`[COOKIES] Copied Render secret file to ${cookiesPath}`);
+        }
+    } catch (e) {
+        console.warn(`[COOKIES] Failed to copy Render secret file: ${e.message}`);
     }
 }
 
