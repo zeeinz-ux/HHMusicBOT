@@ -11,7 +11,7 @@ class YouTube {
             retries: 3,
             fragmentRetries: 3,
             noCacheDir: true,
-            jsRuntimes: 'node',
+            jsRuntimes: `node:${process.execPath}`,
             addHeader: [
                 'referer:youtube.com',
                 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
@@ -19,54 +19,22 @@ class YouTube {
             ...extraOptions
         };
 
-        // player_client: use clients that work without PO Token for basic playback.
-        //   - tv           : YouTube TV, stabil (codec: m4a)
-        //   - mweb         : mobile web (codec: opus/m4a)
-        //   - android_vr   : Android VR (codec: opus)
-        //   - visionos     : visionOS (codec: opus)
-        // IMPORTANT: DO NOT add "web" — the web client triggers bot detection in
-        // many environments. tv/mweb/android_vr/visionos avoid this.
-        // Cookies are STILL passed for HTTP-level auth (bypass bot detection).
+        // Auth priority: PO Token > Browser Cookies > Cookie File > iOS client (no auth needed)
         //
-        // po_token + player_client MUST use ONE youtube: prefix in extractor-args:
-        //   CORRECT: youtube:po_token=TOKEN;player_client=...
-        //   WRONG:   youtube:po_token=TOKEN;youtube:player_client=... (duplicate prefix)
-        const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
-
+        // PO Token → demands player_client=web (which requires the token to work)
+        //   Correct format: youtube:po_token=web+TOKEN;player_client=web
+        //   (web+ prefix tells yt-dlp which client the token is for)
+        //
+        // iOS client → works on server IPs without ANY cookies or PO token.
+        //   Much more reliable than tv/mweb/android_vr/visionos on cloud hosts.
         if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken};player_client=tv,mweb,android_vr,visionos`;
-        } else {
-            baseOptions.extractorArgs = clientArgs;
-        }
-
-        const fs = require('fs');
-        const p = require('path');
-        const os = require('os');
-        const tmpCookiePath = p.join(os.tmpdir(), 'hhmusic-cookies.txt');
-
-        if (config.ytdl.cookiesFromBrowser) {
-            // yt-dlp manage temp file sendiri untuk cookies dari browser
+            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
+        } else if (config.ytdl.cookiesFromBrowser) {
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
+        } else if (config.ytdl.cookiesFile) {
+            baseOptions.cookies = config.ytdl.cookiesFile;
         } else {
-            let srcPath = null;
-            if (config.ytdl.cookiesFile) {
-                srcPath = p.resolve(config.ytdl.cookiesFile);
-            } else if (fs.existsSync(tmpCookiePath)) {
-                srcPath = tmpCookiePath;
-            } else if (fs.existsSync('/etc/secrets/cookies.txt')) {
-                srcPath = '/etc/secrets/cookies.txt';
-            } else if (fs.existsSync('/tmp/cookies.txt')) {
-                srcPath = '/tmp/cookies.txt';
-            }
-            if (srcPath) {
-                try {
-                    const content = fs.readFileSync(srcPath, 'utf-8');
-                    fs.writeFileSync(tmpCookiePath, content, 'utf-8');
-                    baseOptions.cookies = tmpCookiePath;
-                } catch (e) {
-                    console.warn(`[YouTube] Failed to use cookies from ${srcPath}: ${e.message}`);
-                }
-            }
+            baseOptions.extractorArgs = 'youtube:player_client=ios';
         }
 
         if (config.ytdl.proxy) {
