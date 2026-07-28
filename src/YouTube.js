@@ -19,27 +19,24 @@ class YouTube {
             ...extraOptions
         };
 
-        // yt-dlp 2026.07+ player_client behavior:
-        //   - Without cookies: default = visionos,android_vr,web (web omitted if no JS runtime)
-        //   - WITH cookies:    default = tv_downgraded,web (free) or tv_downgraded,web_creator,web (premium)
-        //   - Some clients (tv,mweb,android_vr,visionos) DON'T support cookie auth!
+        // player_client: use clients that work without PO Token for basic playback.
+        //   - tv           : YouTube TV, stabil (codec: m4a)
+        //   - mweb         : mobile web (codec: opus/m4a)
+        //   - android_vr   : Android VR (codec: opus)
+        //   - visionos     : visionOS (codec: opus)
+        // IMPORTANT: DO NOT add "web" — the web client triggers bot detection in
+        // many environments. tv/mweb/android_vr/visionos avoid this.
+        // Cookies are STILL passed for HTTP-level auth (bypass bot detection).
         //
-        // So: if cookies are present, DON'T override — let yt-dlp auto-select.
-        // Only override when NO cookies to force clients that work without auth.
-        const hasCookies = !!(config.ytdl.cookiesFile || config.ytdl.cookiesFromBrowser || process.env.COOKIES_CONTENT);
+        // po_token + player_client MUST use ONE youtube: prefix in extractor-args:
+        //   CORRECT: youtube:po_token=TOKEN;player_client=...
+        //   WRONG:   youtube:po_token=TOKEN;youtube:player_client=... (duplicate prefix)
+        const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
 
-        if (hasCookies) {
-            // yt-dlp will use tv_downgraded,web — best for cookie auth
-            if (config.ytdl.poToken) {
-                baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken}`;
-            }
+        if (config.ytdl.poToken) {
+            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken};player_client=tv,mweb,android_vr,visionos`;
         } else {
-            const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
-            if (config.ytdl.poToken) {
-                baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken};${clientArgs}`;
-            } else {
-                baseOptions.extractorArgs = clientArgs;
-            }
+            baseOptions.extractorArgs = clientArgs;
         }
 
         const fs = require('fs');
