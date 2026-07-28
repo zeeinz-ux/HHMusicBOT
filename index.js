@@ -8,15 +8,21 @@ const PlayerStateManager = require('./src/PlayerStateManager');
 const MusicPlayer = require('./src/MusicPlayer');
 const chalk = require('chalk');
 const http = require('http');
-const url = require('url');
 
 // Start server for Railway/cloud platforms — binds to PORT immediately
 // so the platform doesn't kill the container during the 5s startup delay.
 // Handles both health checks AND Spotify OAuth callback.
 const serverPort = process.env.PORT || 8080;
 const server = http.createServer(async (req, res) => {
-    const parsed = url.parse(req.url, true);
-    if (parsed.pathname === '/spotify-callback' && parsed.query.code) {
+    let parsed;
+    try {
+        parsed = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    } catch {
+        res.writeHead(400);
+        res.end('Bad Request');
+        return;
+    }
+    if (parsed.pathname === '/spotify-callback' && parsed.searchParams.get('code')) {
         try {
             const Spotify = require('./src/Spotify');
             await Spotify.exchangeCode(parsed.query.code);
