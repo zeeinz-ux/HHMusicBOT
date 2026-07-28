@@ -447,14 +447,9 @@ class YouTube {
     static async getRelated(url, guildId = null) {
         try {
             await this._logBinaryVersionOnce();
-            // Use web client for related videos (required by yt-dlp for related metadata)
-            const opts = this.getYtDlpOptions({
+            const info = await youtubedl(url, this.getYtDlpOptions({
                 dumpSingleJson: true,
-            });
-            opts.extractorArgs = config.ytdl.poToken
-                ? `youtube:po_token=${config.ytdl.poToken};youtube:player_client=web`
-                : 'youtube:player_client=web';
-            const info = await youtubedl(url, opts);
+            }));
 
             // Extract related video URLs from yt-dlp metadata
             const related = (info?.related || [])
