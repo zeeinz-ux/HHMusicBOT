@@ -1040,6 +1040,11 @@ class MusicPlayer {
             // Play the resource
             this.audioPlayer.play(this.resource);
 
+            // Fade in for new tracks (not resumes)
+            if (resumeFromMs === 0) {
+                this.fadeIn().catch(() => {});
+            }
+
             if (this.pauseReasons.size > 0) {
                 console.log(`⏸️  Paused due to: ${Array.from(this.pauseReasons).join(', ')}`);
                 this.audioPlayer.pause();
@@ -1439,6 +1444,40 @@ class MusicPlayer {
         return ['-af', chain];
     }
 
+    async fadeOut(durationMs) {
+        const config = require('../config');
+        const enabled = config.audio.crossfade?.enabled;
+        const dur = config.audio.crossfade?.duration || 5;
+        if (!enabled || dur <= 0) return;
+
+        const ms = durationMs || dur * 1000;
+        const steps = 20;
+        const interval = ms / steps;
+        const startVol = this.volume;
+        for (let i = 1; i <= steps; i++) {
+            await new Promise(r => setTimeout(r, interval));
+            if (!this.resource?.volume) return;
+            this.resource.volume.setVolume(startVol * (1 - i / steps) / 100);
+        }
+    }
+
+    async fadeIn(durationMs, targetVolume) {
+        const config = require('../config');
+        const enabled = config.audio.crossfade?.enabled;
+        const dur = config.audio.crossfade?.duration || 5;
+        if (!enabled || dur <= 0) return;
+
+        const ms = durationMs || dur * 1000;
+        const steps = 20;
+        const interval = ms / steps;
+        const target = targetVolume ?? this.volume;
+        for (let i = 1; i <= steps; i++) {
+            await new Promise(r => setTimeout(r, interval));
+            if (!this.resource?.volume) return;
+            this.resource.volume.setVolume(target * (i / steps) / 100);
+        }
+    }
+
     shuffleQueue() {
         if (this.queue.length > 1) {
             for (let i = this.queue.length - 1; i > 0; i--) {
@@ -1563,6 +1602,9 @@ class MusicPlayer {
                 this.resource = null;
                 return;
             }
+
+            // Fade out before switching tracks
+            await this.fadeOut();
 
             this.previousTracks.push(finishedTrack);
 

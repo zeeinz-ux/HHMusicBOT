@@ -38,6 +38,10 @@ module.exports = {
         quality: 'highestaudio',
         format: 'mp3',
         bitrate: 320,
+        crossfade: {
+            enabled: false,
+            duration: 5
+        },
         filters: {
             bassboost: 'bass=g=20',
             nightcore: 'aresample=48000,asetrate=48000*1.25',
