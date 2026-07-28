@@ -232,7 +232,7 @@ setTimeout(() => {
         } else {
             res.end('ok');
         }
-    }).listen(process.env.PORT || 3000);
+    }).listen(3000);
 
     const client = new Client({
         intents: [
