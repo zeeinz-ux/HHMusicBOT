@@ -80,6 +80,7 @@ class MusicPlayer {
         // Filters
         this.currentFilter = null;
         this.audioQuality = 128; // kbps
+        this.playbackSpeed = 1.0;
 
         // UI Management
         this.nowPlayingMessage = null;
@@ -1439,12 +1440,40 @@ class MusicPlayer {
         return { success: true };
     }
 
+    setSpeed(speed) {
+        this.playbackSpeed = Math.max(0.5, Math.min(10.0, speed));
+        this.scheduleStatePersist('speed', 200);
+        if (this.currentTrack) {
+            return this.play(null, Math.max(0, this.getCurrentTime() || 0));
+        }
+        return { success: true };
+    }
+
     _buildFilterArgs() {
-        if (!this.currentFilter) return [];
-        const config = require('../config');
-        const chain = config.audio.filters[this.currentFilter];
-        if (!chain) return [];
-        return ['-af', chain];
+        const chains = [];
+        if (this.currentFilter) {
+            const config = require('../config');
+            const chain = config.audio.filters[this.currentFilter];
+            if (chain) chains.push(chain);
+        }
+        if (this.playbackSpeed && this.playbackSpeed !== 1.0) {
+            const speed = Math.max(0.5, Math.min(10.0, this.playbackSpeed));
+            if (speed >= 0.5 && speed <= 2.0) {
+                chains.push(`atempo=${speed}`);
+            } else {
+                // Chain atempo filters (each accepts 0.5-2.0 range)
+                let remaining = speed;
+                while (remaining > 2.0) {
+                    chains.push('atempo=2.0');
+                    remaining /= 2.0;
+                }
+                if (Math.abs(remaining - 1.0) > 0.01) {
+                    chains.push(`atempo=${remaining}`);
+                }
+            }
+        }
+        if (chains.length === 0) return [];
+        return ['-af', chains.join(',')];
     }
 
     async fadeOut(durationMs) {
@@ -2048,6 +2077,7 @@ class MusicPlayer {
             autoplay: this.autoplay,
             currentFilter: this.currentFilter || null,
             audioQuality: this.audioQuality || 128,
+            playbackSpeed: this.playbackSpeed || 1.0,
             paused: this.paused,
             pauseReasons: Array.from(this.pauseReasons || []),
             playbackPositionMs: this.getCurrentTime() || 0,
@@ -2078,6 +2108,7 @@ class MusicPlayer {
         this.autoplay = state.autoplay ?? false;
         this.currentFilter = state.currentFilter || null;
         this.audioQuality = state.audioQuality || 128;
+        this.playbackSpeed = state.playbackSpeed || 1.0;
         this.requesterId = state.requesterId || this.requesterId;
 
         this.previousTracks = (state.previousTracks || [])
