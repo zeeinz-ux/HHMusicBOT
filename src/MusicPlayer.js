@@ -79,6 +79,7 @@ class MusicPlayer {
 
         // Filters
         this.currentFilter = null;
+        this.audioQuality = 128; // kbps
 
         // UI Management
         this.nowPlayingMessage = null;
@@ -955,6 +956,7 @@ class MusicPlayer {
                             '-loglevel', '0',
                             '-i', 'pipe:0',
                             ...this._buildFilterArgs(),
+                            '-b:a', `${this.audioQuality || 128}k`,
                             '-f', 's16le',
                             '-ar', '48000',
                             '-ac', '2'
@@ -997,6 +999,7 @@ class MusicPlayer {
                         '-analyzeduration', '0',
                         '-loglevel', '0',
                         ...this._buildFilterArgs(),
+                        '-b:a', `${this.audioQuality || 128}k`,
                         '-f', 's16le',
                         '-ar', '48000',
                         '-ac', '2'
@@ -2044,6 +2047,7 @@ class MusicPlayer {
             shuffle: this.shuffle,
             autoplay: this.autoplay,
             currentFilter: this.currentFilter || null,
+            audioQuality: this.audioQuality || 128,
             paused: this.paused,
             pauseReasons: Array.from(this.pauseReasons || []),
             playbackPositionMs: this.getCurrentTime() || 0,
@@ -2073,6 +2077,7 @@ class MusicPlayer {
         this.shuffle = state.shuffle ?? false;
         this.autoplay = state.autoplay ?? false;
         this.currentFilter = state.currentFilter || null;
+        this.audioQuality = state.audioQuality || 128;
         this.requesterId = state.requesterId || this.requesterId;
 
         this.previousTracks = (state.previousTracks || [])
