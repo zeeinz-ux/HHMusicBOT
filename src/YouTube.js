@@ -14,7 +14,7 @@ class YouTube {
             jsRuntimes: 'node',
             addHeader: [
                 'referer:youtube.com',
-                'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+                'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
             ],
             ...extraOptions
         };
@@ -447,11 +447,14 @@ class YouTube {
     static async getRelated(url, guildId = null) {
         try {
             await this._logBinaryVersionOnce();
-            const info = await youtubedl(url, this.getYtDlpOptions({
+            // Use web client for related videos (required by yt-dlp for related metadata)
+            const opts = this.getYtDlpOptions({
                 dumpSingleJson: true,
-                skipDownload: true,
-                extractorArgs: ['youtube:player_client=web'],
-            }));
+            });
+            opts.extractorArgs = config.ytdl.poToken
+                ? `youtube:po_token=${config.ytdl.poToken};youtube:player_client=web`
+                : 'youtube:player_client=web';
+            const info = await youtubedl(url, opts);
 
             // Extract related video URLs from yt-dlp metadata
             const related = (info?.related || [])
