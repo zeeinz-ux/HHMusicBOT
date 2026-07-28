@@ -954,6 +954,7 @@ class MusicPlayer {
                             '-analyzeduration', '0',
                             '-loglevel', '0',
                             '-i', 'pipe:0',
+                            ...this._buildFilterArgs(),
                             '-f', 's16le',
                             '-ar', '48000',
                             '-ac', '2'
@@ -995,6 +996,7 @@ class MusicPlayer {
                         '-i', downloadedFile,
                         '-analyzeduration', '0',
                         '-loglevel', '0',
+                        ...this._buildFilterArgs(),
                         '-f', 's16le',
                         '-ar', '48000',
                         '-ac', '2'
@@ -1405,6 +1407,36 @@ class MusicPlayer {
         }
         this.scheduleStatePersist('volume', 200);
         return this.volume;
+    }
+
+    setFilter(filterName) {
+        const config = require('../config');
+        if (filterName && !config.audio.filters[filterName]) {
+            return { success: false, message: `Unknown filter: ${filterName}` };
+        }
+        this.currentFilter = filterName || null;
+        this.scheduleStatePersist('filter', 200);
+        if (this.currentTrack) {
+            return this.play(null, Math.max(0, this.getCurrentTime() || 0));
+        }
+        return { success: true };
+    }
+
+    removeFilter() {
+        this.currentFilter = null;
+        this.scheduleStatePersist('filter', 200);
+        if (this.currentTrack) {
+            return this.play(null, Math.max(0, this.getCurrentTime() || 0));
+        }
+        return { success: true };
+    }
+
+    _buildFilterArgs() {
+        if (!this.currentFilter) return [];
+        const config = require('../config');
+        const chain = config.audio.filters[this.currentFilter];
+        if (!chain) return [];
+        return ['-af', chain];
     }
 
     shuffleQueue() {
@@ -1969,6 +2001,7 @@ class MusicPlayer {
             loop: this.loop,
             shuffle: this.shuffle,
             autoplay: this.autoplay,
+            currentFilter: this.currentFilter || null,
             paused: this.paused,
             pauseReasons: Array.from(this.pauseReasons || []),
             playbackPositionMs: this.getCurrentTime() || 0,
@@ -1997,6 +2030,7 @@ class MusicPlayer {
         this.loop = state.loop ?? false;
         this.shuffle = state.shuffle ?? false;
         this.autoplay = state.autoplay ?? false;
+        this.currentFilter = state.currentFilter || null;
         this.requesterId = state.requesterId || this.requesterId;
 
         this.previousTracks = (state.previousTracks || [])
