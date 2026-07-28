@@ -7,6 +7,18 @@ const config = require('./config');
 const PlayerStateManager = require('./src/PlayerStateManager');
 const MusicPlayer = require('./src/MusicPlayer');
 const chalk = require('chalk');
+const http = require('http');
+
+// Start health check server for Railway/cloud platforms — binds to PORT immediately
+// so the platform doesn't kill the container during the 5s startup delay.
+const healthPort = process.env.PORT || 8080;
+const healthServer = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK');
+});
+healthServer.listen(healthPort, () => {
+    console.log(`[HEALTH] Health check server listening on port ${healthPort}`);
+});
 
 // COOKIES_CONTENT env var → write to cookies file at startup
 if (process.env.COOKIES_CONTENT && config.ytdl.cookiesFile) {
