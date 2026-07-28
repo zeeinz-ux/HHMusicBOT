@@ -19,21 +19,27 @@ class YouTube {
             ...extraOptions
         };
 
-        // yt-dlp perlu write access ke cookies file (untuk refresh cookie jar).
-        // Kalo file asli di read-only filesystem (container), kita copy ke temp dir dulu.
+        // yt-dlp 2026.07+ player_client behavior:
+        //   - Without cookies: default = visionos,android_vr,web (web omitted if no JS runtime)
+        //   - WITH cookies:    default = tv_downgraded,web (free) or tv_downgraded,web_creator,web (premium)
+        //   - Some clients (tv,mweb,android_vr,visionos) DON'T support cookie auth!
         //
-        // player_client: pake client yg gak butuh PO Token.
-        //   - tv           : YouTube TV, stabil (codec: m4a)
-        //   - mweb         : mobile web (codec: opus/m4a)
-        //   - android_vr   : Android VR (codec: opus)
-        //   - visionos     : visionOS (codec: opus)
-        // Default (tv_downgraded,web) dengan cookies bisa aja gak nyediain audio-only format.
-        const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
+        // So: if cookies are present, DON'T override — let yt-dlp auto-select.
+        // Only override when NO cookies to force clients that work without auth.
+        const hasCookies = !!(config.ytdl.cookiesFile || config.ytdl.cookiesFromBrowser || process.env.COOKIES_CONTENT);
 
-        if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken};${clientArgs}`;
+        if (hasCookies) {
+            // yt-dlp will use tv_downgraded,web — best for cookie auth
+            if (config.ytdl.poToken) {
+                baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken}`;
+            }
         } else {
-            baseOptions.extractorArgs = clientArgs;
+            const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
+            if (config.ytdl.poToken) {
+                baseOptions.extractorArgs = `youtube:po_token=${config.ytdl.poToken};${clientArgs}`;
+            } else {
+                baseOptions.extractorArgs = clientArgs;
+            }
         }
 
         const fs = require('fs');
