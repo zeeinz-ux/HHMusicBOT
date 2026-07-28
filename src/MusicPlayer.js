@@ -1054,6 +1054,12 @@ class MusicPlayer {
                 this.audioPlayer.pause();
             }
 
+            // Start now-playing progress auto-update
+            const embedMgr = global.clients?.musicEmbedManager || this.guild?.client?.musicEmbedManager;
+            if (embedMgr && typeof embedMgr.startProgressUpdate === 'function') {
+                embedMgr.startProgressUpdate(this);
+            }
+
             // Store active stream info for quick resume
             const baseSourceUrl = typeof streamInfo === 'object'
                 ? (streamInfo.rawUrl || streamInfo.url || (typeof streamUrl_final === 'string' ? streamUrl_final : null))
@@ -2335,6 +2341,12 @@ class MusicPlayer {
         try {
             this.clearInactivityTimer(false);
             this.stopStateSync();
+
+            // Stop progress auto-update
+            const embedMgr = global.clients?.musicEmbedManager || this.guild?.client?.musicEmbedManager;
+            if (embedMgr && typeof embedMgr.stopProgressUpdate === 'function') {
+                embedMgr.stopProgressUpdate(this.guild.id);
+            }
 
             // During shutdown, save state before cleanup
             if (isShutdown && this.guild?.id) {

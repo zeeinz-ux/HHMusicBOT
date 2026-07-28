@@ -5,8 +5,8 @@ const LanguageManager = require('./LanguageManager');
 class MusicEmbedManager {
     constructor(client) {
         this.client = client;
-        // Çakışma önleme için işlem kuyruğu
-        this.processingQueue = new Map(); // guildId -> Promise
+        this.processingQueue = new Map();
+        this.progressIntervals = new Map(); // guildId -> intervalId
     }
 
     /**
@@ -219,9 +219,17 @@ class MusicEmbedManager {
     async createNowPlayingEmbed(player, track, guildId) {
         const nowPlayingTitle = await LanguageManager.getTranslation(guildId, 'commands.play.now_playing');
 
+        const currentMs = player.getCurrentTime() || 0;
+        const totalMs = (Number(track.duration) || 0) * 1000;
+        const progressBar = totalMs > 0 ? this.buildProgressBar(currentMs, totalMs) : '';
+
+        const description = progressBar
+            ? `**[${track.title}](${track.url})**\n${progressBar}`
+            : `**[${track.title}](${track.url})**`;
+
         const embed = new EmbedBuilder()
             .setTitle(nowPlayingTitle)
-            .setDescription(`**[${track.title}](${track.url})**`)
+            .setDescription(description)
             .setColor(config.bot.embedColor)
             .setTimestamp();
 
@@ -530,6 +538,51 @@ class MusicEmbedManager {
     /**
      * Duration formatı
      */
+    startProgressUpdate(player) {
+        const guildId = player.guild.id;
+        if (this.progressIntervals.has(guildId)) return;
+
+        const interval = setInterval(async () => {
+            try {
+                if (!player.currentTrack || player.paused) return;
+                await this.updateNowPlayingEmbed(player);
+            } catch (error) {
+                // Ignore errors during auto-update
+            }
+        }, 10000);
+
+        this.progressIntervals.set(guildId, interval);
+    }
+
+    stopProgressUpdate(guildId) {
+        if (this.progressIntervals.has(guildId)) {
+            clearInterval(this.progressIntervals.get(guildId));
+            this.progressIntervals.delete(guildId);
+        }
+    }
+
+    buildProgressBar(currentMs, totalMs) {
+        if (!totalMs || totalMs <= 0) return '';
+        const barLength = 20;
+        const progress = Math.min(currentMs / totalMs, 1);
+        const filled = Math.round(progress * barLength);
+        const empty = barLength - filled;
+        const current = this.formatDurationMs(currentMs);
+        const total = this.formatDurationMs(totalMs);
+        return `\`${current} [${'█'.repeat(filled)}${'░'.repeat(empty)}] ${total}\``;
+    }
+
+    formatDurationMs(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        if (hours > 0) {
+            return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
     formatDuration(seconds) {
         if (!seconds || seconds === 0) return '0:00';
 
