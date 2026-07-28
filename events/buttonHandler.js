@@ -103,6 +103,12 @@ module.exports = {
                     await this.handleLyrics(interaction, player);
                     break;
 
+                case 'queue_prev':
+                case 'queue_next':
+                case 'queue_page_info':
+                    await this.handleQueuePagination(interaction, player);
+                    return;
+
                 default:
                     await interaction.reply({
                         content: await LanguageManager.getTranslation(guild?.id, 'buttonhandler.unknown_interaction'),
@@ -338,49 +344,148 @@ module.exports = {
             });
         }
 
-        const queueTitle = await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.play_queue_title');
+        const TRACKS_PER_PAGE = 10;
+        const totalPages = Math.max(1, Math.ceil(queueInfo.queue.length / TRACKS_PER_PAGE));
+
         const embed = new EmbedBuilder()
-            .setTitle(queueTitle)
+            .setTitle('🎵 Music Queue')
             .setColor(config.bot.embedColor)
             .setTimestamp();
 
-        // Current track
         if (queueInfo.current) {
             const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
-            const progress = this.createProgressBar(currentTime, queueInfo.current.duration);
+            const totalMs = (queueInfo.current.duration || 0) * 1000;
+            const progress = this.createProgressBar(currentTime, totalMs);
 
             embed.addFields({
-                name: await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.now_playing'),
+                name: '▶ Now Playing',
                 value: `**[${queueInfo.current.title}](${queueInfo.current.url})**\n${progress}`,
                 inline: false
             });
         }
 
-        // Queue tracks
         if (queueInfo.queue.length > 0) {
             let queueText = '';
-            const tracks = queueInfo.queue.slice(0, 10); // Show first 10
+            const tracks = queueInfo.queue.slice(0, TRACKS_PER_PAGE);
 
-            tracks.forEach((track, index) => {
-                queueText += `\`${index + 1}.\` **[${track.title}](${track.url})**\n`;
+            tracks.forEach((track, i) => {
+                const duration = track.duration ? ` \`${this.formatDuration(track.duration)}\`` : '';
+                queueText += `\`${i + 1}.\` **[${track.title}](${track.url})**${duration}\n`;
             });
 
-            if (queueInfo.queue.length > 10) {
-                queueText += `\n*${await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.and_more', { count: queueInfo.queue.length - 10 })}*`;
-            }
-
             embed.addFields({
-                name: await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.upcoming_songs', { count: queueInfo.queue.length }),
+                name: `📋 Upcoming (${queueInfo.queue.length} songs)`,
                 value: queueText,
                 inline: false
             });
         }
 
         embed.setFooter({
-            text: await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.total_songs', { count: queueInfo.queue.length + (queueInfo.current ? 1 : 0) })
+            text: `Page 1/${totalPages} • ${queueInfo.queue.length + (queueInfo.current ? 1 : 0)} songs total`
         });
 
-        await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+        const components = [];
+        if (totalPages > 1) {
+            components.push(
+                new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('queue_prev').setEmoji('◀').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                    new ButtonBuilder().setCustomId('queue_page_info').setLabel(`1/${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+                    new ButtonBuilder().setCustomId('queue_next').setEmoji('▶').setStyle(ButtonStyle.Secondary).setDisabled(totalPages <= 1)
+                )
+            );
+        }
+
+        await interaction.reply({ embeds: [embed], components, flags: [1 << 6] });
+    },
+
+    async handleQueuePagination(interaction, player) {
+        if (interaction.customId === 'queue_page_info') {
+            return await interaction.deferUpdate();
+        }
+
+        const queueInfo = player.getQueue();
+        if (!queueInfo.current && queueInfo.queue.length === 0) {
+            return await interaction.reply({
+                content: await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.no_songs_in_queue'),
+                flags: [1 << 6]
+            });
+        }
+
+        const TRACKS_PER_PAGE = 10;
+        const totalPages = Math.max(1, Math.ceil(queueInfo.queue.length / TRACKS_PER_PAGE));
+
+        let currentPage = 0;
+        const footerMatch = interaction.message?.embeds?.[0]?.footer?.text?.match(/Page (\d+)\//);
+        if (footerMatch) {
+            currentPage = parseInt(footerMatch[1]) - 1;
+        }
+
+        let newPage = currentPage;
+        if (interaction.customId === 'queue_prev') {
+            newPage = Math.max(0, currentPage - 1);
+        } else if (interaction.customId === 'queue_next') {
+            newPage = Math.min(totalPages - 1, currentPage + 1);
+        }
+
+        const start = newPage * TRACKS_PER_PAGE;
+
+        const embed = new EmbedBuilder()
+            .setTitle('🎵 Music Queue')
+            .setColor(config.bot.embedColor)
+            .setTimestamp();
+
+        if (queueInfo.current) {
+            const currentTime = player.getCurrentTime ? player.getCurrentTime() : 0;
+            const totalMs = (queueInfo.current.duration || 0) * 1000;
+            const progress = this.createProgressBar(currentTime, totalMs);
+
+            embed.addFields({
+                name: '▶ Now Playing',
+                value: `**[${queueInfo.current.title}](${queueInfo.current.url})**\n${progress}`,
+                inline: false
+            });
+        }
+
+        if (queueInfo.queue.length > 0) {
+            let queueText = '';
+            const tracks = queueInfo.queue.slice(start, start + TRACKS_PER_PAGE);
+
+            tracks.forEach((track, i) => {
+                const idx = start + i + 1;
+                const duration = track.duration ? ` \`${this.formatDuration(track.duration)}\`` : '';
+                queueText += `\`${idx}.\` **[${track.title}](${track.url})**${duration}\n`;
+            });
+
+            embed.addFields({
+                name: `📋 Upcoming (${queueInfo.queue.length} songs)`,
+                value: queueText,
+                inline: false
+            });
+        }
+
+        embed.setFooter({
+            text: `Page ${newPage + 1}/${totalPages} • ${queueInfo.queue.length + (queueInfo.current ? 1 : 0)} songs total`
+        });
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('queue_prev')
+                .setEmoji('◀')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(newPage === 0),
+            new ButtonBuilder()
+                .setCustomId('queue_page_info')
+                .setLabel(`${newPage + 1}/${totalPages}`)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId('queue_next')
+                .setEmoji('▶')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(newPage >= totalPages - 1)
+        );
+
+        await interaction.update({ embeds: [embed], components: [row] });
     },
 
     async handleShuffle(interaction, player, requesterId) {
@@ -645,6 +750,12 @@ module.exports = {
             components: [row],
             flags: [1 << 6]
         });
+    },
+
+    formatDuration(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     },
 
     createProgressBar(current, total) {
