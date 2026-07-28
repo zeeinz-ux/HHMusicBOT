@@ -19,20 +19,28 @@ class YouTube {
             ...extraOptions
         };
 
-        // Auth priority: PO Token > Browser Cookies > Cookie File > iOS client (no auth needed)
+        // Auth priority: Cookies (browser/file) > PO Token > iOS client (no auth needed)
         //
-        // PO Token → demands player_client=web (which requires the token to work)
+        // Cookies (browser or file) → verified working combo is player_client=mweb.
+        //   `web` client alone returns an empty format list without a valid PO token,
+        //   and `tv` returns formats but 403s the actual download. mweb downloads cleanly
+        //   with the same cookies file. Cookies are more stable than PO tokens (weeks
+        //   vs hours) so they're preferred when available.
+        //
+        // PO Token → demands player_client=web (which requires the token to work).
         //   Correct format: youtube:po_token=web+TOKEN;player_client=web
-        //   (web+ prefix tells yt-dlp which client the token is for)
+        //   Used as a fallback if no cookies are configured.
         //
         // iOS client → works on server IPs without ANY cookies or PO token.
-        //   Much more reliable than tv/mweb/android_vr/visionos on cloud hosts.
-        if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
-        } else if (config.ytdl.cookiesFromBrowser) {
+        //   Last-resort fallback when neither cookies nor PO token are available.
+        if (config.ytdl.cookiesFromBrowser) {
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
+            baseOptions.extractorArgs = 'youtube:player_client=mweb';
         } else if (config.ytdl.cookiesFile) {
             baseOptions.cookies = config.ytdl.cookiesFile;
+            baseOptions.extractorArgs = 'youtube:player_client=mweb';
+        } else if (config.ytdl.poToken) {
+            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
         } else {
             baseOptions.extractorArgs = 'youtube:player_client=ios';
         }
