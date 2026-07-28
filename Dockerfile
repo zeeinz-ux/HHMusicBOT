@@ -7,7 +7,7 @@ WORKDIR /app
 COPY . .
 
 ENV PORT=8080
-ENV NODE_OPTIONS=--max-old-space-size=128
+ENV NODE_OPTIONS=--max-old-space-size=384
 
 RUN npm install
 
