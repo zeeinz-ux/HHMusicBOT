@@ -709,6 +709,11 @@ class MusicPlayer {
     }
 
     async play(trackIndex = null, seekMs = 0) {
+        // Guard against concurrent play() calls — only one can run at a time
+        if (this._playLock) {
+            return { success: false, message: 'Already playing' };
+        }
+        this._playLock = true;
         try {
             // If no current track, get from queue
             if (!this.currentTrack) {
@@ -1076,6 +1081,8 @@ class MusicPlayer {
             const errorMsg = await ErrorHandler.handle(error, this.guild.id, 'MusicPlayer.play');
             await this.handleError(error, errorMsg);
             return { success: false, message: errorMsg };
+        } finally {
+            this._playLock = false;
         }
     }
 
