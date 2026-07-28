@@ -230,14 +230,14 @@ class YouTube {
             // Spawn yt-dlp as a direct stream to stdout — avoids 403 on fetch
             const { spawn } = require('child_process');
 
-            // Don't use cookies for streaming — they trigger n-challenge which fails.
-            // player_client=tv,mweb,android_vr,visionos works without cookies.
+            // Use the same auth strategy as the rest of the code. Cookies help on
+            // server IPs (Railway/Render) where YouTube 403s unauthenticated clients
+            // even for streaming. The old "n-challenge" comment was about a different
+            // client combo that we no longer use.
             const flags = this.getYtDlpOptions({
                 output: '-',
                 format: 'ba/b',
             });
-            delete flags.cookies;
-            delete flags.cookiesFromBrowser;
 
             const args = [url];
             for (const [key, val] of Object.entries(flags)) {
@@ -261,15 +261,36 @@ class YouTube {
             // Spawn the streaming process
             const ytdlpStream = spawn(youtubedl.binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
-            // Collect stderr for debugging (keep only last line)
-            let stderrLast = '';
+            // Collect stderr and surface fatal errors. yt-dlp 403s / format
+            // failures were previously swallowed because we never logged stderrLast
+            // — leaving "Playing" logs with no audio as the only symptom.
+            let stderrTail = '';
+            let stdoutBytes = 0;
             ytdlpStream.stderr.on('data', d => {
-                const lines = d.toString().trim().split('\n');
-                stderrLast = lines[lines.length - 1] || stderrLast;
+                const text = d.toString();
+                stderrTail = (stderrTail + text).split('\n').slice(-5).join('\n').trim();
+            });
+            ytdlpStream.stdout.on('data', d => { stdoutBytes += d.length; });
+
+            // Wait for either an immediate error (close before any stdout) or some data.
+            // If yt-dlp dies with no stdout, log the stderr instead of silently failing.
+            const exitInfo = await new Promise(resolve => {
+                let settled = false;
+                const finish = payload => { if (!settled) { settled = true; resolve(payload); } };
+                ytdlpStream.on('close', code => finish({ kind: 'close', code }));
+                ytdlpStream.on('error', err => finish({ kind: 'error', err }));
+                // Give yt-dlp ~8s to start producing data; if it dies before, report.
+                const timer = setTimeout(() => finish({ kind: 'timeout' }), 8000);
+                // settle once data is flowing
+                const onData = () => { clearTimeout(timer); finish({ kind: 'data' }); };
+                ytdlpStream.stdout.on('data', onData);
             });
 
-            // Small delay to catch immediate spawn errors
-            await new Promise(resolve => setImmediate(resolve));
+            if (exitInfo.kind === 'close' && stdoutBytes === 0) {
+                console.error(`[YouTube.getStream] yt-dlp exited (code ${exitInfo.code}) with no stdout. stderr:\n${stderrTail}`);
+            } else if (exitInfo.kind === 'error') {
+                console.error(`[YouTube.getStream] yt-dlp spawn error: ${exitInfo.err?.message}`);
+            }
 
             return {
                 stream: ytdlpStream.stdout,
