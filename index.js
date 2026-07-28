@@ -8,16 +8,33 @@ const PlayerStateManager = require('./src/PlayerStateManager');
 const MusicPlayer = require('./src/MusicPlayer');
 const chalk = require('chalk');
 const http = require('http');
+const url = require('url');
 
-// Start health check server for Railway/cloud platforms — binds to PORT immediately
+// Start server for Railway/cloud platforms — binds to PORT immediately
 // so the platform doesn't kill the container during the 5s startup delay.
-const healthPort = process.env.PORT || 8080;
-const healthServer = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('OK');
+// Handles both health checks AND Spotify OAuth callback.
+const serverPort = process.env.PORT || 8080;
+const server = http.createServer(async (req, res) => {
+    const parsed = url.parse(req.url, true);
+    if (parsed.pathname === '/spotify-callback' && parsed.query.code) {
+        try {
+            const Spotify = require('./src/Spotify');
+            await Spotify.exchangeCode(parsed.query.code);
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end('<h2>✅ Spotify authorization successful! You can close this window and use the bot now.</h2>');
+            console.log('✅ Spotify OAuth callback received and token stored');
+        } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'text/html' });
+            res.end(`<h2>❌ Authorization failed: ${err.message}</h2>`);
+            console.error('❌ Spotify OAuth callback error:', err.message);
+        }
+    } else {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+    }
 });
-healthServer.listen(healthPort, () => {
-    console.log(`[HEALTH] Health check server listening on port ${healthPort}`);
+server.listen(serverPort, () => {
+    console.log(`[SERVER] HTTP server listening on port ${serverPort}`);
 });
 
 // COOKIES_CONTENT env var → write to cookies file at startup
@@ -212,28 +229,6 @@ async function restoreSavedPlayers(client) {
 
 // Don't cleanup audio cache yet - wait until after we check saved states
 setTimeout(() => {
-    // Health check server + Spotify OAuth callback
-    const http = require('http');
-    const url = require('url');
-    http.createServer(async (req, res) => {
-        const parsed = url.parse(req.url, true);
-        if (parsed.pathname === '/spotify-callback' && parsed.query.code) {
-            try {
-                const Spotify = require('./src/Spotify');
-                await Spotify.exchangeCode(parsed.query.code);
-                res.writeHead(200, { 'Content-Type': 'text/html' });
-                res.end('<h2>✅ Spotify authorization successful! You can close this window and use the bot now.</h2>');
-                console.log('✅ Spotify OAuth callback received and token stored');
-            } catch (err) {
-                res.writeHead(400, { 'Content-Type': 'text/html' });
-                res.end(`<h2>❌ Authorization failed: ${err.message}</h2>`);
-                console.error('❌ Spotify OAuth callback error:', err.message);
-            }
-        } else {
-            res.end('ok');
-        }
-    }).listen(3000);
-
     const client = new Client({
         intents: [
             GatewayIntentBits.Guilds,
