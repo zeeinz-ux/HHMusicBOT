@@ -1,6 +1,33 @@
 const youtubedl = require('./ytdlp-exec');
 const config = require('../config');
 const LanguageManager = require('./LanguageManager');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// Materialize COOKIES_CONTENT (a raw cookie string from env vars) to a temp file
+// once per process. Returns the path. Used on Railway / Render / other hosts
+// where cookies can't live on disk and must be passed via env vars.
+//
+// yt-dlp has no `--cookies-stdin`, so we have to write to a file. We do this
+// lazily and cache the path so we only pay the cost once.
+let _cookiesContentPath = null;
+function materializeCookiesContent() {
+    if (_cookiesContentPath) return _cookiesContentPath;
+    const content = process.env.COOKIES_CONTENT;
+    if (!content || !content.trim()) return null;
+    try {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hhmusic-'));
+        const p = path.join(dir, 'cookies.txt');
+        fs.writeFileSync(p, content, 'utf8');
+        _cookiesContentPath = p;
+        console.log(`[YouTube] COOKIES_CONTENT written to ${p}`);
+        return p;
+    } catch (e) {
+        console.error('[YouTube] Failed to write COOKIES_CONTENT to temp file:', e.message);
+        return null;
+    }
+}
 
 class YouTube {
     // yt-dlp için ortak parametreleri döndüren yardımcı fonksiyon
@@ -19,7 +46,7 @@ class YouTube {
             ...extraOptions
         };
 
-        // Auth priority: Cookies (browser/file) > PO Token > iOS client (no auth needed)
+        // Auth priority: Cookies (browser/file/content) > PO Token > iOS client (no auth needed)
         //
         // Cookies (browser or file) → verified working combo is player_client=mweb.
         //   `web` client alone returns an empty format list without a valid PO token,
@@ -27,17 +54,25 @@ class YouTube {
         //   with the same cookies file. Cookies are more stable than PO tokens (weeks
         //   vs hours) so they're preferred when available.
         //
+        // COOKIES_CONTENT env var → raw cookie string from platforms like Railway/Render
+        //   where the filesystem isn't persistent. We materialize it to a temp file
+        //   because yt-dlp has no stdin-cookies option.
+        //
         // PO Token → demands player_client=web (which requires the token to work).
         //   Correct format: youtube:po_token=web+TOKEN;player_client=web
         //   Used as a fallback if no cookies are configured.
         //
         // iOS client → works on server IPs without ANY cookies or PO token.
         //   Last-resort fallback when neither cookies nor PO token are available.
+        const envCookiesPath = materializeCookiesContent();
         if (config.ytdl.cookiesFromBrowser) {
             baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
             baseOptions.extractorArgs = 'youtube:player_client=mweb';
         } else if (config.ytdl.cookiesFile) {
             baseOptions.cookies = config.ytdl.cookiesFile;
+            baseOptions.extractorArgs = 'youtube:player_client=mweb';
+        } else if (envCookiesPath) {
+            baseOptions.cookies = envCookiesPath;
             baseOptions.extractorArgs = 'youtube:player_client=mweb';
         } else if (config.ytdl.poToken) {
             baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
