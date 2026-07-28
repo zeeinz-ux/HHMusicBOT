@@ -443,6 +443,50 @@ class YouTube {
             return false;
         }
     }
+
+    static async getRelated(url, guildId = null) {
+        try {
+            await this._logBinaryVersionOnce();
+            const info = await youtubedl(url, this.getYtDlpOptions({
+                dumpSingleJson: true,
+                skipDownload: true,
+                extractorArgs: ['youtube:player_client=web'],
+            }));
+
+            // Extract related video URLs from yt-dlp metadata
+            const related = (info?.related || [])
+                .filter(v => v && v.url && v.title)
+                .slice(0, 15)
+                .map(v => ({
+                    title: v.title,
+                    url: v.url,
+                    duration: v.duration || 0,
+                    thumbnail: v.thumbnail || this.createThumbnailUrl(this.extractVideoId(v.url)),
+                    platform: 'youtube',
+                    artist: v.uploader || v.channel || 'Unknown'
+                }));
+
+            // Fallback: if no related videos, use playlist entries or similar
+            if (related.length === 0 && info?.playlist && Array.isArray(info.playlist)) {
+                return info.playlist
+                    .filter(v => v && v.url && v.title && v.url !== url)
+                    .slice(0, 15)
+                    .map(v => ({
+                        title: v.title,
+                        url: v.url,
+                        duration: v.duration || 0,
+                        thumbnail: v.thumbnail || this.createThumbnailUrl(this.extractVideoId(v.url)),
+                        platform: 'youtube',
+                        artist: v.uploader || v.channel || 'Unknown'
+                    }));
+            }
+
+            return related;
+        } catch (error) {
+            console.error('[YouTube] getRelated() failed:', error.message || error);
+            return [];
+        }
+    }
 }
 
 module.exports = YouTube;
