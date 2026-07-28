@@ -84,18 +84,18 @@ class LyricsManager {
             return this.cache.get(cacheKey);
         }
 
-        // Try Genius first
-        const geniusResult = await this.fetchFromGenius(track);
-        if (geniusResult && geniusResult.plain) {
-            this.storeInCache(cacheKey, geniusResult);
-            return geniusResult;
-        }
-
-        // Fallback to LRCLIB
+        // Try LRCLIB first (free, reliable, no API key)
         const lrclibResult = await this.fetchFromLrclib(track);
         if (lrclibResult && lrclibResult.plain) {
             this.storeInCache(cacheKey, lrclibResult);
             return lrclibResult;
+        }
+
+        // Fallback to Genius
+        const geniusResult = await this.fetchFromGenius(track);
+        if (geniusResult && geniusResult.plain) {
+            this.storeInCache(cacheKey, geniusResult);
+            return geniusResult;
         }
 
         // Cache null result to avoid repeated lookups
