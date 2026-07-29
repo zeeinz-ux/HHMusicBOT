@@ -50,37 +50,29 @@ class YouTube {
         };
 
         // Auth priority: Cookies (browser/file/content) > PO Token > iOS client (no auth needed)
-        //
-        // Cookies (browser or file) → verified working combo is player_client=mweb.
-        //   `web` client alone returns an empty format list without a valid PO token,
-        //   and `tv` returns formats but 403s the actual download. mweb downloads cleanly
-        //   with the same cookies file. Cookies are more stable than PO tokens (weeks
-        //   vs hours) so they're preferred when available.
-        //
-        // COOKIES_CONTENT env var → raw cookie string from platforms like Railway/Render
-        //   where the filesystem isn't persistent. We materialize it to a temp file
-        //   because yt-dlp has no stdin-cookies option.
-        //
-        // PO Token → demands player_client=web (which requires the token to work).
-        //   Correct format: youtube:po_token=web+TOKEN;player_client=web
-        //   Used as a fallback if no cookies are configured.
-        //
-        // iOS client → works on server IPs without ANY cookies or PO token.
-        //   Last-resort fallback when neither cookies nor PO token are available.
+        // Only applied when caller didn't explicitly pass extractorArgs (for fallback cycling).
         const envCookiesPath = materializeCookiesContent();
-        if (config.ytdl.cookiesFromBrowser) {
-            baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
-            baseOptions.extractorArgs = 'youtube:player_client=mweb';
-        } else if (config.ytdl.cookiesFile) {
-            baseOptions.cookies = config.ytdl.cookiesFile;
-            baseOptions.extractorArgs = 'youtube:player_client=mweb';
-        } else if (envCookiesPath) {
-            baseOptions.cookies = envCookiesPath;
-            baseOptions.extractorArgs = 'youtube:player_client=mweb';
-        } else if (config.ytdl.poToken) {
-            baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
+        if (!baseOptions.extractorArgs) {
+            if (config.ytdl.cookiesFromBrowser) {
+                baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
+                baseOptions.extractorArgs = 'youtube:player_client=mweb';
+            } else if (config.ytdl.cookiesFile) {
+                baseOptions.cookies = config.ytdl.cookiesFile;
+                baseOptions.extractorArgs = 'youtube:player_client=mweb';
+            } else if (envCookiesPath) {
+                baseOptions.cookies = envCookiesPath;
+                baseOptions.extractorArgs = 'youtube:player_client=mweb';
+            } else if (config.ytdl.poToken) {
+                baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
+            } else {
+                baseOptions.extractorArgs = 'youtube:player_client=ios';
+            }
         } else {
-            baseOptions.extractorArgs = 'youtube:player_client=ios';
+            // Fallback client — strip all auth (cookies / PO token) so yt-dlp
+            // tries the given client without any session baggage.
+            delete baseOptions.cookiesFromBrowser;
+            delete baseOptions.cookies;
+            console.log(`[YouTube] Fallback client: ${baseOptions.extractorArgs} (no auth)`);
         }
 
         if (config.ytdl.proxy) {
@@ -226,6 +218,7 @@ class YouTube {
 
     static async _spawnStreamProc(url, extraFlags) {
         const { spawn } = require('child_process');
+        console.log(`[YT-SPAWN] _spawnStreamProc url=${url?.substring(0, 60)} extra=${JSON.stringify(extraFlags)}`);
         const flags = this.getYtDlpOptions({ output: '-', format: 'ba/b', ...extraFlags });
         const args = [url];
         for (const [key, val] of Object.entries(flags)) {
