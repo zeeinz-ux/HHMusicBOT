@@ -9,6 +9,17 @@ const MusicPlayer = require('./src/MusicPlayer');
 const chalk = require('chalk');
 const http = require('http');
 
+// GH#critical: catch unhandled errors so a single bad stream/socket cleanup
+// doesn't kill the entire bot process. Log loudly so they show up in deploy logs.
+process.on('uncaughtException', (err) => {
+    console.error('❌ [uncaughtException]', err && err.message ? err.message : err);
+    if (err && err.stack) console.error(err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('❌ [unhandledRejection]', reason && reason.message ? reason.message : reason);
+    if (reason && reason.stack) console.error(reason.stack);
+});
+
 // Start server for Railway/cloud platforms — binds to PORT immediately
 // so the platform doesn't kill the container during the 5s startup delay.
 // Handles both health checks AND Spotify OAuth callback.

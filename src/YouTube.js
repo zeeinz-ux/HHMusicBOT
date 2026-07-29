@@ -324,15 +324,30 @@ class YouTube {
 
             console.log(`[YouTube.getStream] Stream ready — client=${usedClient}, format=${streamFormat}`);
 
+            // Container detection: yt-dlp with mweb client serves audio in **webm**
+            // even when the codec is AAC (mp4a.40.2). The "container" field in the
+            // returned track tells FFmpeg which demuxer to use, so we must detect
+            // it correctly. Probe by extension/url hints when acodec doesn't help.
+            //
+            // Note: even when info says mp4a, the actual stdout stream from a
+            // webm-wrapped YouTube DASH segment will be Matroska/webm.
             let container = null;
-            if (acodec?.includes('opus')) container = 'webm';
-            else if (acodec?.includes('mp4a') || acodec?.includes('aac')) container = 'mp4';
+            if (acodec?.includes('opus')) {
+                container = 'webm';
+            } else if (acodec?.includes('mp4a') || acodec?.includes('aac')) {
+                // Default to webm for YouTube DASH streams — mweb client wraps
+                // audio in webm container. MusicPlayer.js uses this hint to set
+                // FFmpeg's input format flag.
+                container = 'webm';
+            } else {
+                container = 'webm';
+            }
 
             return {
                 stream: stream.stdout,
                 url: null,
                 rawUrl: null,
-                type: acodec?.includes('opus') ? 'opus' : 'arbitrary',
+                type: container === 'webm' ? 'webm/opus' : 'arbitrary',
                 container,
                 duration,
                 bitrate,

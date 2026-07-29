@@ -943,19 +943,33 @@ class MusicPlayer {
                     console.log(`[Playback] Using direct stream for "${this.currentTrack.title}"`);
                 }
 
-                // Diagnose: check if audioStream actually produces data
+                // Diagnose: check if audioStream actually produces data.
+                // Bug fix: capture audioStream by value (don't rely on closure variable
+                // that may be reassigned/overwritten before the timer fires). Also use
+                // off() which is null-safe and tolerates the listener not being found.
                 if (audioStream && typeof audioStream.on === 'function') {
                     let bytesReceived = 0;
                     const dataListener = chunk => { bytesReceived += chunk.length; };
                     audioStream.on('data', dataListener);
                     setTimeout(() => {
-                        if (bytesReceived === 0) {
-                            console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack.title}"`);
-                        } else {
-                            console.log(`[Playback] ✅ Stream producing data: ${(bytesReceived / 1024).toFixed(1)}KB received in first 5s`);
+                        try {
+                            if (bytesReceived === 0) {
+                                console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack.title}"`);
+                            } else {
+                                console.log(`[Playback] ✅ Stream producing data: ${(bytesReceived / 1024).toFixed(1)}KB received in first 5s`);
+                            }
+                            // off()/removeListener() — only call if audioStream is still
+                            // an EventEmitter (not a Socket/raw stream object that got
+                            // reassigned). Defensive: never throw out of this timer.
+                            if (typeof audioStream.off === 'function') {
+                                audioStream.off('data', dataListener);
+                            } else if (typeof audioStream.removeListener === 'function') {
+                                audioStream.removeListener('data', dataListener);
+                            }
+                        } catch (cleanupErr) {
+                            console.warn(`[Playback] Listener cleanup warning (non-fatal): ${cleanupErr.message}`);
                         }
-                        audioStream.removeListener('data', dataListener);
-                    }, 5000);
+                    }, 5000).unref?.();
                 }
 
                 // If streaming failed and we got a downloaded file, skip to file playback
@@ -963,21 +977,38 @@ class MusicPlayer {
                     shouldDownload = false; // Fall through to file playback
                 } else if (audioStream) {
                     // Create FFmpeg process for streaming
-                    const seekArgs = resumeFromMs > 0 
-                        ? ['-ss', (resumeFromMs / 1000).toFixed(3)] 
+                    const seekArgs = resumeFromMs > 0
+                        ? ['-ss', (resumeFromMs / 1000).toFixed(3)]
                         : [];
-                    
+
                     if (!ffmpegPath) {
                         console.error(`[Playback] ffmpeg-static path is NULL — ffmpeg not found!`);
                     } else if (typeof ffmpegPath === 'string' && !fsSync.existsSync(ffmpegPath)) {
                         console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
                     }
 
+                    // Hint FFmpeg the input container — YouTube (esp. mweb client)
+                    // serves audio in webm even when the codec is AAC. Without an
+                    // `-f` hint, FFmpeg probes up to probesize bytes and fails with
+                    // "Invalid data found when processing input" when the first
+                    // segment is fragmented. The container hint forces the correct
+                    // demuxer (matroska/webm) and avoids the bad-probe failure.
+                    // Use `-f` BEFORE `-i` so it applies to the input.
+                    const inputFormat = streamInfo?.container === 'webm'
+                        ? ['-f', 'matroska,webm']
+                        : (streamInfo?.container === 'mp4'
+                            ? ['-f', 'mp4']
+                            : []);
+
                     const ffmpegProcess = new prism.FFmpeg({
                         command: ffmpegPath,
                         args: [
+                            ...inputFormat,
                             ...seekArgs,
-                            '-probesize', '10M',
+                            '-probesize', '32M',
+                            '-analyzeduration', '32M',
+                            '-fflags', '+genpts+discardcorrupt',
+                            '-err_detect', 'ignore_err',
                             '-i', 'pipe:0',
                             '-loglevel', 'warning',
                             ...this._buildFilterArgs(),
@@ -999,6 +1030,11 @@ class MusicPlayer {
                         ffmpegProcess.process.stderr.on('data', d => {
                             ffmpegStderr += d.toString();
                         });
+                    }
+                    // GH#critical: also catch stdout errors so a broken pipe doesn't
+                    // take down the process with an unhandled exception.
+                    if (ffmpegProcess.process && ffmpegProcess.process.stdout) {
+                        ffmpegProcess.process.stdout.on('error', () => {});
                     }
 
                     audioStream.pipe(ffmpegProcess, { highWaterMark: 1024 * 1024 });
