@@ -5,6 +5,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// DIAGNOSTIC: this runs once when YouTube.js is first loaded
+console.log(`[YOUTUBE-MODULE-LOADED] YouTube.js loaded, binary=${youtubedl.binaryPath}, exists=${fs.existsSync(youtubedl.binaryPath)}`);
+
 // Materialize COOKIES_CONTENT (a raw cookie string from env vars) to a temp file
 // once per process. Returns the path. Used on Railway / Render / other hosts
 // where cookies can't live on disk and must be passed via env vars.
