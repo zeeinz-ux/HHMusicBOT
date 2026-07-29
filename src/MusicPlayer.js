@@ -617,7 +617,7 @@ class MusicPlayer {
                 
                 await youtubedl(downloadUrl, {
                     output: filepath,
-                    format: 'ba/b',
+                    format: 'bestaudio/best',
                     noCheckCertificates: true,
                     noWarnings: true,
                     preferFreeFormats: true,
@@ -987,25 +987,35 @@ class MusicPlayer {
                         console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
                     }
 
-                    // GH#critical: do NOT pin `-f matroska,webm` — it backfires.
-                    // YouTube's DASH audio from mweb client streams vary in
-                    // container (some are mp4, some webm) and pinning the wrong
-                    // one gives "EBML header parsing failed" because the data
-                    // is actually ISO-BMFF / mp4. Let FFmpeg auto-detect via
-                    // probing, but give it enough room + error tolerance to
-                    // survive fragmented DASH segments.
+                    // GH#refactor: Beatra-style minimal FFmpeg args.
+                    //
+                    // The old build-up of `-probesize 64M / -analyzeduration 64M /
+                    // -fflags +...` made FFmpeg wait too long before decoding and
+                    // still failed on YouTube's fragmented DASH segments with
+                    // "EBML header parsing failed" / "Invalid data".
+                    //
+                    // What works (verified against umutxyp/MusicBot):
+                    //   -analyzeduration 0  → decode from the very first byte
+                    //   -loglevel 0         → silence FFmpeg's verbose probing logs
+                    //   -f s16le / -ar 48000 / -ac 2 → raw PCM for Discord
+                    //
+                    // Filter chain (bass/earwax/nightcore + speed) is still
+                    // applied via -af. The `-b:a` knob was removed because
+                    // we're transcoding to raw s16le PCM — bitrate applies to
+                    // the source codec, not the output format. FFmpeg picks a
+                    // reasonable per-frame size automatically.
+                    //
+                    // Seek is also done at the URL layer (begin=<ms>) when
+                    // canSeek is true, so -ss here is only a fallback.
+                    const filterArgs = this._buildFilterArgs();
                     const ffmpegProcess = new prism.FFmpeg({
                         command: ffmpegPath,
                         args: [
                             ...seekArgs,
-                            '-probesize', '64M',
-                            '-analyzeduration', '64M',
-                            '-fflags', '+genpts+discardcorrupt+flush_packets',
-                            '-err_detect', 'ignore_err',
+                            '-analyzeduration', '0',
+                            '-loglevel', '0',
                             '-i', 'pipe:0',
-                            '-loglevel', 'warning',
-                            ...this._buildFilterArgs(),
-                            '-b:a', `${this.audioQuality || 128}k`,
+                            ...filterArgs,
                             '-f', 's16le',
                             '-ar', '48000',
                             '-ac', '2'

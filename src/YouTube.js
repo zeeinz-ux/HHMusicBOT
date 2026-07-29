@@ -216,42 +216,6 @@ class YouTube {
         }
     }
 
-    static async _spawnStreamProc(url, extraFlags) {
-        const { spawn } = require('child_process');
-        console.log(`[YT-SPAWN] _spawnStreamProc url=${url?.substring(0, 60)} extra=${JSON.stringify(extraFlags)}`);
-        const flags = this.getYtDlpOptions({ output: '-', format: 'ba/b', ...extraFlags });
-        const args = [url];
-        for (const [key, val] of Object.entries(flags)) {
-            if (val === false || val === null || val === undefined) continue;
-            const k = key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
-            if (val === true) {
-                args.push(`--${k}`);
-            } else if (Array.isArray(val)) {
-                for (const v of val) args.push(`--${k}`, String(v));
-            } else {
-                args.push(`--${k}`, String(val));
-            }
-        }
-        const proc = spawn(youtubedl.binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-        let stderrTail = '';
-        let stdoutBytes = 0;
-        proc.stderr.on('data', d => {
-            stderrTail = (stderrTail + d.toString()).split('\n').slice(-5).join('\n').trim();
-        });
-        proc.stdout.on('data', d => { stdoutBytes += d.length; });
-
-        const result = await new Promise(resolve => {
-            let settled = false;
-            const finish = p => { if (!settled) { settled = true; resolve(p); } };
-            proc.on('close', code => finish({ kind: 'close', code, stdoutBytes }));
-            proc.on('error', err => finish({ kind: 'error', err, stdoutBytes }));
-            const timer = setTimeout(() => finish({ kind: 'timeout', stdoutBytes }), 15000);
-            proc.stdout.on('data', () => { clearTimeout(timer); finish({ kind: 'data', proc }); });
-        });
-
-        return { result, proc, stderrTail };
-    }
-
     static async getStream(url, guildId = null, startSeconds = 0) {
         try {
             await this._logBinaryVersionOnce();
@@ -261,96 +225,59 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // Check yt-dlp binary exists
-            const binPath = youtubedl.binaryPath;
-            const fs = require('fs');
-            if (!fs.existsSync(binPath)) {
-                console.error(`[YouTube.getStream] yt-dlp binary NOT FOUND at: ${binPath}`);
-                throw new Error(`yt-dlp binary not found at ${binPath}`);
-            }
-            console.log(`[YouTube.getStream] yt-dlp binary: ${binPath}`);
+            // GH#refactor: switched from "spawn yt-dlp with -o - and read stdout"
+            // to "yt-dlp dumpSingleJson + return the direct media URL".
+            //
+            // The old approach broke FFmpeg because yt-dlp's stdout pipe for
+            // YouTube DASH segments was fragmented — the first byte FFmpeg
+            // received was often 0x00 (padding/null) instead of the EBML
+            // signature, so FFmpeg bailed with "EBML header parsing failed".
+            //
+            // The new approach: ask yt-dlp for the JSON metadata, which includes
+            // `info.url` pointing to googlevideo.com. We hand that URL to a
+            // regular HTTP fetch (stream-from-disk semantics) and pipe to
+            // FFmpeg. This is exactly how umutxyp/MusicBot (Beatra) does it,
+            // and it's the stable path.
+            const info = await youtubedl(url, this.getYtDlpOptions({
+                dumpSingleJson: true,
+                format: 'bestaudio/best',
+            }));
 
-            // Get metadata first (dumpSingleJson) — also validates the URL works
-            const info = await youtubedl(url, this.getYtDlpOptions({ dumpSingleJson: true }));
-            if (!info) {
-                throw new Error('yt-dlp returned no info');
-            }
-
-            const duration = info?.duration || 0;
-            const bitrate = info?.abr || info?.tbr || 0;
-            const acodec = info?.acodec || 'unknown';
-
-            console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, title: "${info.title}"`);
-
-            // GH#critical: prefer explicit Opus transcoding via yt-dlp's bundled
-            // postprocessor instead of relying on whatever container the source
-            // uses (mp4/m4a vs webm/opus vs fragmented DASH segments). When
-            // `audioFormat` is 'opus', yt-dlp always emits Opus-in-WebM to
-            // stdout — a stable container we can hand to prism-media FFmpeg
-            // (or to Discord's StreamType.WebmOpus) without probing gymnastics.
-            const formatCandidates = [
-                { fmt: 'ba/b', audioFormat: 'opus' },
-                { fmt: 'ba/b' },
-                { fmt: 'bestaudio', audioFormat: 'opus' },
-                { fmt: 'bestaudio' },
-                { fmt: 'worstaudio', audioFormat: 'opus' },
-                { fmt: 'worstaudio' },
-            ];
-            // Client fallbacks — if the default auth (iOS/web) fails, try android then tv
-            const clientFallbacks = [
-                { label: 'default' },                              // as-is from getYtDlpOptions
-                { label: 'android', extractorArgs: 'youtube:player_client=android' },
-                { label: 'tv,mweb', extractorArgs: 'youtube:player_client=tv,mweb' },
-            ];
-
-            let stream = null;
-            let streamFormat = null;
-            let usedClient = null;
-
-            for (const clientCfg of clientFallbacks) {
-                for (const { fmt, audioFormat } of formatCandidates) {
-                    const extra = { format: fmt };
-                    if (audioFormat) extra.audioFormat = audioFormat;
-                    if (clientCfg.extractorArgs) extra.extractorArgs = clientCfg.extractorArgs;
-
-                    console.log(`[YouTube.getStream] Try client="${clientCfg.label}" format="${fmt}"${audioFormat ? ` audioFormat="${audioFormat}"` : ''}...`);
-                    const { result, proc, stderrTail } = await this._spawnStreamProc(url, extra);
-
-                    if (result.kind === 'data') {
-                        console.log(`[YouTube.getStream] ✓ client="${clientCfg.label}" format="${fmt}"${audioFormat ? ` audioFormat="${audioFormat}"` : ''} — data flowing`);
-                        stream = proc;
-                        streamFormat = audioFormat ? `${fmt}+${audioFormat}` : fmt;
-                        usedClient = clientCfg.label;
-                        break;
-                    }
-
-                    console.warn(`[YouTube.getStream] ✗ client="${clientCfg.label}" format="${fmt}"${audioFormat ? ` audioFormat="${audioFormat}"` : ''} → ${result.kind}${result.code !== undefined ? ` (code ${result.code})` : ''} stderr:\n${stderrTail || '(empty)'}`);
-                    try { proc.kill(); } catch {}
-                }
-                if (stream) break;
+            if (!info || !info.url) {
+                const errorMsg = guildId ? await LanguageManager.getTranslation(guildId, 'youtube.no_stream_url') : 'No stream URL found';
+                throw new Error(errorMsg);
             }
 
-            if (!stream) {
-                throw new Error('All format/client combinations failed. YouTube likely blocked on this IP — set COOKIES_CONTENT or a PO_TOKEN in .env');
+            const baseUrl = info.url;
+            const canSeek = /googlevideo\.com/i.test(baseUrl);
+            let finalUrl = baseUrl;
+
+            // YouTube's googlevideo.com URLs support native seeking via the
+            // `begin=<ms>` query parameter — much faster than re-decoding
+            // through FFmpeg with -ss.
+            const seekSeconds = Math.max(0, Number(startSeconds) || 0);
+            if (seekSeconds > 0 && canSeek) {
+                const startMs = Math.floor(seekSeconds * 1000);
+                const separator = baseUrl.includes('?') ? '&' : '?';
+                finalUrl = `${baseUrl}${separator}begin=${startMs}`;
             }
 
-            console.log(`[YouTube.getStream] Stream ready — client=${usedClient}, format=${streamFormat}`);
+            const acodec = info.acodec || 'unknown';
+            const duration = info.duration || 0;
+            const bitrate = info.abr || info.tbr || 0;
 
-            // We requested Opus transcoding above (or got native Opus from the
-            // source). Either way, yt-dlp always emits Opus-in-WebM for stdout
-            // when `audioFormat` is set. Pass the raw stdout through and let
-            // prism-media FFmpeg + StreamType.WebmOpus handle decoding.
+            console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, canSeek: ${canSeek}`);
+            console.log(`[YouTube.getStream] Returning direct URL: ${finalUrl.substring(0, 80)}...`);
+
             return {
-                stream: stream.stdout,
-                url: null,
-                rawUrl: null,
-                type: 'webm/opus',
-                container: 'webm',
+                url: finalUrl,
+                rawUrl: baseUrl,
+                type: acodec.includes('opus') ? 'opus' : 'arbitrary',
                 duration,
                 bitrate,
-                canSeek: false,
-                format: streamFormat,
-                httpHeaders: {}
+                canSeek,
+                format: info.format,
+                httpHeaders: info.http_headers || {}
             };
 
         } catch (error) {
