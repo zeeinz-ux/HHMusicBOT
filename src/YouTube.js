@@ -329,7 +329,7 @@ class YouTube {
             else if (acodec?.includes('mp4a') || acodec?.includes('aac')) container = 'mp4';
 
             return {
-                stream: proc.stdout,
+                stream: stream.stdout,
                 url: null,
                 rawUrl: null,
                 type: acodec?.includes('opus') ? 'opus' : 'arbitrary',
