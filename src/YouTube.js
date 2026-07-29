@@ -282,8 +282,20 @@ class YouTube {
 
             console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, title: "${info.title}"`);
 
-            // Try combinations: formats × client fallback
-            const formatCandidates = ['ba/b', 'bestaudio', 'worstaudio'];
+            // GH#critical: prefer explicit Opus transcoding via yt-dlp's bundled
+            // postprocessor instead of relying on whatever container the source
+            // uses (mp4/m4a vs webm/opus vs fragmented DASH segments). When
+            // `audioFormat` is 'opus', yt-dlp always emits Opus-in-WebM to
+            // stdout — a stable container we can hand to prism-media FFmpeg
+            // (or to Discord's StreamType.WebmOpus) without probing gymnastics.
+            const formatCandidates = [
+                { fmt: 'ba/b', audioFormat: 'opus' },
+                { fmt: 'ba/b' },
+                { fmt: 'bestaudio', audioFormat: 'opus' },
+                { fmt: 'bestaudio' },
+                { fmt: 'worstaudio', audioFormat: 'opus' },
+                { fmt: 'worstaudio' },
+            ];
             // Client fallbacks — if the default auth (iOS/web) fails, try android then tv
             const clientFallbacks = [
                 { label: 'default' },                              // as-is from getYtDlpOptions
@@ -296,23 +308,23 @@ class YouTube {
             let usedClient = null;
 
             for (const clientCfg of clientFallbacks) {
-                for (const fmt of formatCandidates) {
-                    const extra = clientCfg.extractorArgs
-                        ? { extractorArgs: clientCfg.extractorArgs, format: fmt }
-                        : { format: fmt };
+                for (const { fmt, audioFormat } of formatCandidates) {
+                    const extra = { format: fmt };
+                    if (audioFormat) extra.audioFormat = audioFormat;
+                    if (clientCfg.extractorArgs) extra.extractorArgs = clientCfg.extractorArgs;
 
-                    console.log(`[YouTube.getStream] Try client="${clientCfg.label}" format="${fmt}"...`);
+                    console.log(`[YouTube.getStream] Try client="${clientCfg.label}" format="${fmt}"${audioFormat ? ` audioFormat="${audioFormat}"` : ''}...`);
                     const { result, proc, stderrTail } = await this._spawnStreamProc(url, extra);
 
                     if (result.kind === 'data') {
-                        console.log(`[YouTube.getStream] ✓ client="${clientCfg.label}" format="${fmt}" — data flowing`);
+                        console.log(`[YouTube.getStream] ✓ client="${clientCfg.label}" format="${fmt}"${audioFormat ? ` audioFormat="${audioFormat}"` : ''} — data flowing`);
                         stream = proc;
-                        streamFormat = fmt;
+                        streamFormat = audioFormat ? `${fmt}+${audioFormat}` : fmt;
                         usedClient = clientCfg.label;
                         break;
                     }
 
-                    console.warn(`[YouTube.getStream] ✗ client="${clientCfg.label}" format="${fmt}" → ${result.kind}${result.code !== undefined ? ` (code ${result.code})` : ''} stderr:\n${stderrTail || '(empty)'}`);
+                    console.warn(`[YouTube.getStream] ✗ client="${clientCfg.label}" format="${fmt}"${audioFormat ? ` audioFormat="${audioFormat}"` : ''} → ${result.kind}${result.code !== undefined ? ` (code ${result.code})` : ''} stderr:\n${stderrTail || '(empty)'}`);
                     try { proc.kill(); } catch {}
                 }
                 if (stream) break;
@@ -324,31 +336,16 @@ class YouTube {
 
             console.log(`[YouTube.getStream] Stream ready — client=${usedClient}, format=${streamFormat}`);
 
-            // Container detection: yt-dlp with mweb client serves audio in **webm**
-            // even when the codec is AAC (mp4a.40.2). The "container" field in the
-            // returned track tells FFmpeg which demuxer to use, so we must detect
-            // it correctly. Probe by extension/url hints when acodec doesn't help.
-            //
-            // Note: even when info says mp4a, the actual stdout stream from a
-            // webm-wrapped YouTube DASH segment will be Matroska/webm.
-            let container = null;
-            if (acodec?.includes('opus')) {
-                container = 'webm';
-            } else if (acodec?.includes('mp4a') || acodec?.includes('aac')) {
-                // Default to webm for YouTube DASH streams — mweb client wraps
-                // audio in webm container. MusicPlayer.js uses this hint to set
-                // FFmpeg's input format flag.
-                container = 'webm';
-            } else {
-                container = 'webm';
-            }
-
+            // We requested Opus transcoding above (or got native Opus from the
+            // source). Either way, yt-dlp always emits Opus-in-WebM for stdout
+            // when `audioFormat` is set. Pass the raw stdout through and let
+            // prism-media FFmpeg + StreamType.WebmOpus handle decoding.
             return {
                 stream: stream.stdout,
                 url: null,
                 rawUrl: null,
-                type: container === 'webm' ? 'webm/opus' : 'arbitrary',
-                container,
+                type: 'webm/opus',
+                container: 'webm',
                 duration,
                 bitrate,
                 canSeek: false,

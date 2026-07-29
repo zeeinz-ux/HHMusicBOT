@@ -987,27 +987,20 @@ class MusicPlayer {
                         console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
                     }
 
-                    // Hint FFmpeg the input container — YouTube (esp. mweb client)
-                    // serves audio in webm even when the codec is AAC. Without an
-                    // `-f` hint, FFmpeg probes up to probesize bytes and fails with
-                    // "Invalid data found when processing input" when the first
-                    // segment is fragmented. The container hint forces the correct
-                    // demuxer (matroska/webm) and avoids the bad-probe failure.
-                    // Use `-f` BEFORE `-i` so it applies to the input.
-                    const inputFormat = streamInfo?.container === 'webm'
-                        ? ['-f', 'matroska,webm']
-                        : (streamInfo?.container === 'mp4'
-                            ? ['-f', 'mp4']
-                            : []);
-
+                    // GH#critical: do NOT pin `-f matroska,webm` — it backfires.
+                    // YouTube's DASH audio from mweb client streams vary in
+                    // container (some are mp4, some webm) and pinning the wrong
+                    // one gives "EBML header parsing failed" because the data
+                    // is actually ISO-BMFF / mp4. Let FFmpeg auto-detect via
+                    // probing, but give it enough room + error tolerance to
+                    // survive fragmented DASH segments.
                     const ffmpegProcess = new prism.FFmpeg({
                         command: ffmpegPath,
                         args: [
-                            ...inputFormat,
                             ...seekArgs,
-                            '-probesize', '32M',
-                            '-analyzeduration', '32M',
-                            '-fflags', '+genpts+discardcorrupt',
+                            '-probesize', '64M',
+                            '-analyzeduration', '64M',
+                            '-fflags', '+genpts+discardcorrupt+flush_packets',
                             '-err_detect', 'ignore_err',
                             '-i', 'pipe:0',
                             '-loglevel', 'warning',
