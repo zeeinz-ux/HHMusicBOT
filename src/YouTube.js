@@ -251,7 +251,7 @@ class YouTube {
             const finish = p => { if (!settled) { settled = true; resolve(p); } };
             proc.on('close', code => finish({ kind: 'close', code, stdoutBytes }));
             proc.on('error', err => finish({ kind: 'error', err, stdoutBytes }));
-            const timer = setTimeout(() => finish({ kind: 'timeout', stdoutBytes }), 15000);
+            const timer = setTimeout(() => finish({ kind: 'timeout', stdoutBytes }), 30000);
             proc.stdout.on('data', () => { clearTimeout(timer); finish({ kind: 'data', proc }); });
         });
 
