@@ -49,19 +49,28 @@ class YouTube {
             ...extraOptions
         };
 
-        // Auth priority: Cookies (browser/file/content) > PO Token > iOS client (no auth needed)
-        // NOTE: when cookies are valid, do NOT override player_client — let yt-dlp use its
-        // default `web` client. Forcing `mweb` makes yt-dlp pick formats that return signed
-        // URLs incompatible with our server IP, causing 403 Forbidden from googlevideo.com.
-        // Only override when there's no cookies (iOS fallback) or PO token path (uses web).
+        // player_client cycling — yt-dlp tries clients in order until one returns a stream.
+        //   - tv           : YouTube TV, most stable for server IPs (codec: m4a AAC single-file)
+        //   - mweb         : mobile web (codec: opus/m4a)
+        //   - android_vr   : Android VR (codec: opus)
+        //   - visionos     : visionOS (codec: opus)
+        // Default `web` client (without override) often fails on Render IPs because the
+        // format URLs it returns are signed for a specific session and reject cross-region
+        // fetches with 403. Cycling through tv/mweb/etc gives yt-dlp fallback options.
+        const clientArgs = 'youtube:player_client=tv,mweb,android_vr,visionos';
+
+        // Auth priority: PO Token > Cookies (browser/file/content) > cycling clients
         const envCookiesPath = materializeCookiesContent();
         const hasCookieAuth = config.ytdl.cookiesFromBrowser || config.ytdl.cookiesFile || envCookiesPath;
+
         if (!baseOptions.extractorArgs) {
             if (config.ytdl.poToken) {
                 baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
             } else if (hasCookieAuth) {
-                // Cookies present → pass them through so yt-dlp uses the auth, but do
-                // NOT force player_client (let default `web` client pick formats).
+                // Cookies present → append client cycling AFTER auth, so yt-dlp uses
+                // cookies as auth AND tries tv/mweb/etc clients. Cookies auth carries
+                // through to whatever client wins.
+                baseOptions.extractorArgs = clientArgs;
                 if (config.ytdl.cookiesFromBrowser) {
                     baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
                 } else if (config.ytdl.cookiesFile) {
@@ -70,7 +79,7 @@ class YouTube {
                     baseOptions.cookies = envCookiesPath;
                 }
             } else {
-                baseOptions.extractorArgs = 'youtube:player_client=ios';
+                baseOptions.extractorArgs = clientArgs;
             }
         } else {
             // Fallback client — strip all auth (cookies / PO token) so yt-dlp
@@ -230,68 +239,84 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // GH#refactor: switched from "spawn yt-dlp with -o - and read stdout"
-            // to "yt-dlp dumpSingleJson + return the direct media URL".
+            // Spawn yt-dlp as a direct stream to stdout — avoids 403 on fetch.
             //
-            // The old approach broke FFmpeg because yt-dlp's stdout pipe for
-            // YouTube DASH segments was fragmented — the first byte FFmpeg
-            // received was often 0x00 (padding/null) instead of the EBML
-            // signature, so FFmpeg bailed with "EBML header parsing failed".
+            // Why not fetch info.url like Beatra does?
+            //   - YouTube's `googlevideo.com` signed URLs reject server-side fetches
+            //     with 403 Forbidden when the signature was generated for a different
+            //     IP/session (which is exactly the Render case).
+            //   - Spawning yt-dlp with `-o -` and reading stdout lets the yt-dlp child
+            //     process handle the streaming auth internally — it works.
             //
-            // The new approach: ask yt-dlp for the JSON metadata, which includes
-            // `info.url` pointing to googlevideo.com. We hand that URL to a
-            // regular HTTP fetch (stream-from-disk semantics) and pipe to
-            // FFmpeg. This is exactly how umutxyp/MusicBot (Beatra) does it,
-            // and it's the stable path.
-            const info = await youtubedl(url, this.getYtDlpOptions({
-                dumpSingleJson: true,
-                // Use `protocol^=http` so yt-dlp picks progressive single-file streams
-                // (e.g. format 140 — AAC MP4 single file) over DASH segmented MP4 that
-                // needs extra manifests and is signed for specific clients. Progressive
-                // MP4 is FFmpeg-friendly and works with simple `fetch() + pipe`.
-                format: 'bestaudio[protocol^=http][vcodec=none]/bestaudio/best',
-            }));
+            // Why strip cookies for the streaming child?
+            //   - YouTube's anti-bot "n-challenge" triggers when cookies are present
+            //     but the request looks automated (no browser fingerprints in JS runtime).
+            //     The streaming child has no JS runtime, so cookies cause it to fail.
+            //   - Cookies are still used for the metadata dumpSingleJson call above
+            //     (auth required to even resolve the video).
+            const { spawn } = require('child_process');
 
-            if (!info || !info.url) {
-                const errorMsg = guildId ? await LanguageManager.getTranslation(guildId, 'youtube.no_stream_url') : 'No stream URL found';
-                throw new Error(errorMsg);
+            const flags = this.getYtDlpOptions({
+                output: '-',
+                format: 'ba/b',
+            });
+            delete flags.cookies;
+            delete flags.cookiesFromBrowser;
+
+            const args = [url];
+            for (const [key, val] of Object.entries(flags)) {
+                if (val === false || val === null || val === undefined) continue;
+                const k = key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+                if (val === true) {
+                    args.push(`--${k}`);
+                } else if (Array.isArray(val)) {
+                    for (const v of val) args.push(`--${k}`, String(v));
+                } else {
+                    args.push(`--${k}`, String(val));
+                }
             }
 
-            const baseUrl = info.url;
-            const canSeek = /googlevideo\.com/i.test(baseUrl);
-            let finalUrl = baseUrl;
+            // Get metadata first (dumpSingleJson) — uses cookies for auth.
+            const info = await youtubedl(url, this.getYtDlpOptions({ dumpSingleJson: true }));
 
-            // YouTube's googlevideo.com URLs support native seeking via the
-            // `begin=<ms>` query parameter — much faster than re-decoding
-            // through FFmpeg with -ss.
-            const seekSeconds = Math.max(0, Number(startSeconds) || 0);
-            if (seekSeconds > 0 && canSeek) {
-                const startMs = Math.floor(seekSeconds * 1000);
-                const separator = baseUrl.includes('?') ? '&' : '?';
-                finalUrl = `${baseUrl}${separator}begin=${startMs}`;
-            }
+            const duration = info?.duration || 0;
+            const bitrate = info?.abr || info?.tbr || 0;
+            const acodec = info?.acodec || 'unknown';
+            const format = info?.format || 'unknown';
 
-            const acodec = info.acodec || 'unknown';
-            const duration = info.duration || 0;
-            const bitrate = info.abr || info.tbr || 0;
-            const container = info.ext || 'unknown';
-            const protocol = info.protocol || 'unknown';
-            const headers = info.http_headers || {};
+            // Spawn the streaming process — uses client cycling, no cookies.
+            const ytdlpStream = spawn(youtubedl.binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
-            console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, container: ${container}, protocol: ${protocol}, duration: ${duration}s, bitrate: ${bitrate}k, canSeek: ${canSeek}`);
-            console.log(`[YouTube.getStream] yt-dlp http_headers: ${JSON.stringify(headers)}`);
-            console.log(`[YouTube.getStream] format: ${info.format || 'n/a'}`);
-            console.log(`[YouTube.getStream] Returning direct URL: ${finalUrl.substring(0, 80)}...`);
+            // Collect stderr for debugging (keep only last line).
+            let stderrLast = '';
+            ytdlpStream.stderr.on('data', d => {
+                const lines = d.toString().trim().split('\n');
+                stderrLast = lines[lines.length - 1] || stderrLast;
+            });
+            ytdlpStream.on('close', code => {
+                if (code !== 0) {
+                    console.warn(`[YouTube.getStream] yt-dlp streaming child exited with code ${code}: ${stderrLast}`);
+                }
+            });
+            ytdlpStream.on('error', err => {
+                console.error('[YouTube.getStream] yt-dlp spawn error:', err.message);
+            });
+
+            // Small delay to catch immediate spawn errors.
+            await new Promise(resolve => setImmediate(resolve));
+
+            console.log(`[YouTube.getStream] Spawned yt-dlp streamer — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, format: ${format}`);
 
             return {
-                url: finalUrl,
-                rawUrl: baseUrl,
+                stream: ytdlpStream.stdout,
+                url: null,
+                rawUrl: null,
                 type: acodec.includes('opus') ? 'opus' : 'arbitrary',
                 duration,
                 bitrate,
-                canSeek,
-                format: info.format,
-                httpHeaders: info.http_headers || {}
+                canSeek: false,
+                format,
+                httpHeaders: {}
             };
 
         } catch (error) {
