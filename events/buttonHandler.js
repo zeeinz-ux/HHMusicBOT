@@ -370,7 +370,10 @@ module.exports = {
 
             tracks.forEach((track, i) => {
                 const duration = track.duration ? ` \`${this.formatDuration(track.duration)}\`` : '';
-                queueText += `\`${i + 1}.\` **[${track.title}](${track.url})**${duration}\n`;
+                const title = track.title.length > 80 ? track.title.substring(0, 77) + '...' : track.title;
+                const line = `\`${i + 1}.\` **[${title}](${track.url})**${duration}\n`;
+                if ((queueText + line).length > 1024) return;
+                queueText += line;
             });
 
             embed.addFields({
@@ -455,7 +458,10 @@ module.exports = {
             tracks.forEach((track, i) => {
                 const idx = start + i + 1;
                 const duration = track.duration ? ` \`${this.formatDuration(track.duration)}\`` : '';
-                queueText += `\`${idx}.\` **[${track.title}](${track.url})**${duration}\n`;
+                const title = track.title.length > 80 ? track.title.substring(0, 77) + '...' : track.title;
+                const line = `\`${idx}.\` **[${title}](${track.url})**${duration}\n`;
+                if ((queueText + line).length > 1024) return;
+                queueText += line;
             });
 
             embed.addFields({
@@ -1113,7 +1119,7 @@ module.exports = {
                 });
             }
 
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: [1 << 6] });
 
             const lyricsData = player.currentLyrics;
             const pages = LyricsManager.formatFullLyrics(lyricsData, 4000);
@@ -1228,7 +1234,7 @@ module.exports = {
             if (interaction.deferred) {
                 await interaction.editReply({ content: errorMsg });
             } else {
-                await interaction.reply({ content: errorMsg, ephemeral: true });
+                await interaction.reply({ content: errorMsg, flags: [1 << 6] });
             }
         }
     }

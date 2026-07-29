@@ -70,7 +70,10 @@ module.exports = {
             tracks.forEach((track, i) => {
                 const idx = start + i + 1;
                 const duration = track.duration ? ` \`${this.formatDuration(track.duration)}\`` : '';
-                queueText += `\`${idx}.\` **[${track.title}](${track.url})**${duration}\n`;
+                const title = track.title.length > 80 ? track.title.substring(0, 77) + '...' : track.title;
+                const line = `\`${idx}.\` **[${title}](${track.url})**${duration}\n`;
+                if ((queueText + line).length > 1024) return;
+                queueText += line;
             });
 
             embed.addFields({
