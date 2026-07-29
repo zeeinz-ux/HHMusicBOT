@@ -1023,7 +1023,12 @@ class MusicPlayer {
 
                     let ffmpegStderr = '';
                     ffmpegProcess.on('error', (err) => {
-                        if (err.message && err.message.includes('Premature close')) return;
+                        // EPIPE / ERR_STREAM_PREMATURE_CLOSE happen when the source
+                        // closes (yt-dlp finished) while ffmpeg is still reading, or
+                        // when ffmpeg closes first because the destination stopped.
+                        // pipeline() already cleaned up — just stay quiet.
+                        const code = err && err.code;
+                        if (code === 'EPIPE' || err.message?.includes('Premature close')) return;
                         console.error('❌ FFmpeg streaming error:', err.message);
                         console.error('   stderr:', ffmpegStderr.slice(-500) || '(none)');
                     });
@@ -1058,12 +1063,21 @@ class MusicPlayer {
                     // up as an unhandled exception if the resource hasn't been read
                     // by Discord yet.
                     const captureAudioStream = audioStream;
-                    pipeline(captureAudioStream, ffmpegProcess).catch(err => {
-                        // Only log if it's a real error (not just a normal EPIPE
-                        // from the destination closing first when the track ends).
-                        if (err && err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-                            console.error(`❌ Stream pipeline error: ${err.message || err}`);
-                        }
+                    // GH#epipe-fix: defer the pipe by one tick so prism-media's FFmpeg
+                    // has a chance to spawn its child process and attach the stdin
+                    // listener. Otherwise the very first chunk from yt-dlp's stdout
+                    // hits a half-open stdin and raises EPIPE.
+                    setImmediate(() => {
+                        pipeline(captureAudioStream, ffmpegProcess).catch(err => {
+                            // EPIPE / ERR_STREAM_PREMATURE_CLOSE happen routinely when the
+                            // source finishes or the destination closes first. pipeline()
+                            // already cleaned up all streams — don't pollute the logs.
+                            const code = err && err.code;
+                            if (code === 'EPIPE' || code === 'ERR_STREAM_PREMATURE_CLOSE') return;
+                            if (err && err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+                                console.error(`❌ Stream pipeline error: ${err.message || err}`);
+                            }
+                        });
                     });
 
                     this.resource = createAudioResource(ffmpegProcess, {
