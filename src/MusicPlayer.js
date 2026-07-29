@@ -973,13 +973,11 @@ class MusicPlayer {
                         console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
                     }
 
-                    const inputFormat = streamInfo.container ? ['-f', streamInfo.container] : [];
-
                     const ffmpegProcess = new prism.FFmpeg({
                         command: ffmpegPath,
                         args: [
                             ...seekArgs,
-                            ...inputFormat,
+                            '-probesize', '10M',
                             '-i', 'pipe:0',
                             '-loglevel', 'warning',
                             ...this._buildFilterArgs(),
