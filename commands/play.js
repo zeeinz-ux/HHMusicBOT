@@ -92,7 +92,7 @@ module.exports = {
                 if (interaction.deferred && !interaction.replied) {
                     await interaction.editReply({ content: errorMsg });
                 } else if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ content: errorMsg, ephemeral: true });
+                    await interaction.reply({ content: errorMsg, flags: [1 << 6] });
                 }
             } catch (responseError) {
                 console.error('Error sending error response:', responseError);

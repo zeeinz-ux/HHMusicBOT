@@ -18,7 +18,7 @@ module.exports = {
                 const noPlayerMsg = await LanguageManager.getTranslation(guildId, 'commands.nowplaying.no_player');
                 return await interaction.reply({
                     embeds: [await this.createErrorEmbed(noPlayerMsg, guildId)],
-                    ephemeral: true
+                    flags: [1 << 6]
                 });
             }
 
@@ -26,7 +26,7 @@ module.exports = {
                 const noTrackMsg = await LanguageManager.getTranslation(guildId, 'commands.nowplaying.no_track');
                 return await interaction.reply({
                     embeds: [await this.createErrorEmbed(noTrackMsg, guildId)],
-                    ephemeral: true
+                    flags: [1 << 6]
                 });
             }
 
@@ -185,7 +185,7 @@ module.exports = {
             const errorMsg = await LanguageManager.getTranslation(guildId, 'commands.nowplaying.error_getting_info');
             await interaction.reply({
                 embeds: [await this.createErrorEmbed(errorMsg, guildId)],
-                ephemeral: true
+                flags: [1 << 6]
             });
         }
     },

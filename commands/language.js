@@ -26,7 +26,7 @@ module.exports = {
                     .setColor('#ff0000')
                     .setTimestamp();
                 
-                return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                return await interaction.reply({ embeds: [errorEmbed], flags: [1 << 6] });
             }
 
             const guildId = interaction.guild.id;
@@ -110,7 +110,7 @@ module.exports = {
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply({ embeds: [errorEmbed] });
             } else {
-                await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                await interaction.reply({ embeds: [errorEmbed], flags: [1 << 6] });
             }
         }
     },
@@ -129,7 +129,7 @@ module.exports = {
                     .setColor('#ff0000')
                     .setTimestamp();
                 
-                return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                return await interaction.reply({ embeds: [errorEmbed], flags: [1 << 6] });
             }
 
             const guildId = interaction.guild.id;
