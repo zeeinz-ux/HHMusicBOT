@@ -87,21 +87,24 @@ class YouTube {
         return baseOptions;
     }
 
-    // Logs the bundled yt-dlp binary version once per process. Useful for diagnosing
-    // "is the binary stale?" regressions like the 2026.04 iOS-PO-Token requirement.
+    // Logs the bundled yt-dlp binary path + version once per process.
     static _loggedBinaryVersion = false;
     static async _logBinaryVersionOnce() {
         if (this._loggedBinaryVersion) return;
         this._loggedBinaryVersion = true;
-        try {
-            const { execFileSync } = require('child_process');
-            const path = require('path');
-            const bin = path.join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin',
-                process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
-            const ver = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000 }).trim();
-            console.log(`[YouTube] yt-dlp binary version: ${ver}`);
-        } catch (e) {
-            console.warn(`[YouTube] Could not detect yt-dlp binary version: ${e.message}`);
+        const youtubedl = require('./ytdlp-exec');
+        const bin = youtubedl.binaryPath;
+        const fs = require('fs');
+        const exists = fs.existsSync(bin);
+        console.log(`[YouTube] yt-dlp binary: ${bin} ${exists ? '✓ exists' : '✗ NOT FOUND'}`);
+        if (exists) {
+            try {
+                const { execFileSync } = require('child_process');
+                const ver = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000 }).trim();
+                console.log(`[YouTube] yt-dlp binary version: ${ver}`);
+            } catch (e) {
+                console.warn(`[YouTube] Could not detect yt-dlp binary version: ${e.message}`);
+            }
         }
     }
 
@@ -218,6 +221,41 @@ class YouTube {
         }
     }
 
+    static async _spawnStreamProc(url, extraFlags) {
+        const { spawn } = require('child_process');
+        const flags = this.getYtDlpOptions({ output: '-', format: 'ba/b', ...extraFlags });
+        const args = [url];
+        for (const [key, val] of Object.entries(flags)) {
+            if (val === false || val === null || val === undefined) continue;
+            const k = key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+            if (val === true) {
+                args.push(`--${k}`);
+            } else if (Array.isArray(val)) {
+                for (const v of val) args.push(`--${k}`, String(v));
+            } else {
+                args.push(`--${k}`, String(val));
+            }
+        }
+        const proc = spawn(youtubedl.binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        let stderrTail = '';
+        let stdoutBytes = 0;
+        proc.stderr.on('data', d => {
+            stderrTail = (stderrTail + d.toString()).split('\n').slice(-5).join('\n').trim();
+        });
+        proc.stdout.on('data', d => { stdoutBytes += d.length; });
+
+        const result = await new Promise(resolve => {
+            let settled = false;
+            const finish = p => { if (!settled) { settled = true; resolve(p); } };
+            proc.on('close', code => finish({ kind: 'close', code, stdoutBytes }));
+            proc.on('error', err => finish({ kind: 'error', err, stdoutBytes }));
+            const timer = setTimeout(() => finish({ kind: 'timeout', stdoutBytes }), 15000);
+            proc.stdout.on('data', () => { clearTimeout(timer); finish({ kind: 'data', proc }); });
+        });
+
+        return { result, proc, stderrTail };
+    }
+
     static async getStream(url, guildId = null, startSeconds = 0) {
         try {
             await this._logBinaryVersionOnce();
@@ -227,84 +265,83 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // Spawn yt-dlp as a direct stream to stdout — avoids 403 on fetch
-            const { spawn } = require('child_process');
-
-            // Use the same auth strategy as the rest of the code. Cookies help on
-            // server IPs (Railway/Render) where YouTube 403s unauthenticated clients
-            // even for streaming. The old "n-challenge" comment was about a different
-            // client combo that we no longer use.
-            const flags = this.getYtDlpOptions({
-                output: '-',
-                format: 'ba/b',
-            });
-
-            const args = [url];
-            for (const [key, val] of Object.entries(flags)) {
-                if (val === false || val === null || val === undefined) continue;
-                const k = key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
-                if (val === true) {
-                    args.push(`--${k}`);
-                } else if (Array.isArray(val)) {
-                    for (const v of val) args.push(`--${k}`, String(v));
-                } else {
-                    args.push(`--${k}`, String(val));
-                }
+            // Check yt-dlp binary exists
+            const binPath = youtubedl.binaryPath;
+            const fs = require('fs');
+            if (!fs.existsSync(binPath)) {
+                console.error(`[YouTube.getStream] yt-dlp binary NOT FOUND at: ${binPath}`);
+                throw new Error(`yt-dlp binary not found at ${binPath}`);
             }
+            console.log(`[YouTube.getStream] yt-dlp binary: ${binPath}`);
 
-            // Get metadata first (dumpSingleJson)
+            // Get metadata first (dumpSingleJson) — also validates the URL works
             const info = await youtubedl(url, this.getYtDlpOptions({ dumpSingleJson: true }));
+            if (!info) {
+                throw new Error('yt-dlp returned no info');
+            }
 
             const duration = info?.duration || 0;
             const bitrate = info?.abr || info?.tbr || 0;
+            const acodec = info?.acodec || 'unknown';
 
-            // Spawn the streaming process
-            const ytdlpStream = spawn(youtubedl.binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, title: "${info.title}"`);
 
-            // Collect stderr and surface fatal errors. yt-dlp 403s / format
-            // failures were previously swallowed because we never logged stderrLast
-            // — leaving "Playing" logs with no audio as the only symptom.
-            let stderrTail = '';
-            let stdoutBytes = 0;
-            ytdlpStream.stderr.on('data', d => {
-                const text = d.toString();
-                stderrTail = (stderrTail + text).split('\n').slice(-5).join('\n').trim();
-            });
-            ytdlpStream.stdout.on('data', d => { stdoutBytes += d.length; });
+            // Try combinations: formats × client fallback
+            const formatCandidates = ['ba/b', 'bestaudio', 'worstaudio'];
+            // Client fallbacks — if the default auth (iOS/web) fails, try android then tv
+            const clientFallbacks = [
+                { label: 'default' },                              // as-is from getYtDlpOptions
+                { label: 'android', extractorArgs: 'youtube:player_client=android' },
+                { label: 'tv,mweb', extractorArgs: 'youtube:player_client=tv,mweb' },
+            ];
 
-            // Wait for either an immediate error (close before any stdout) or some data.
-            // If yt-dlp dies with no stdout, log the stderr instead of silently failing.
-            const exitInfo = await new Promise(resolve => {
-                let settled = false;
-                const finish = payload => { if (!settled) { settled = true; resolve(payload); } };
-                ytdlpStream.on('close', code => finish({ kind: 'close', code }));
-                ytdlpStream.on('error', err => finish({ kind: 'error', err }));
-                // Give yt-dlp ~8s to start producing data; if it dies before, report.
-                const timer = setTimeout(() => finish({ kind: 'timeout' }), 8000);
-                // settle once data is flowing
-                const onData = () => { clearTimeout(timer); finish({ kind: 'data' }); };
-                ytdlpStream.stdout.on('data', onData);
-            });
+            let stream = null;
+            let streamFormat = null;
+            let usedClient = null;
 
-            if (exitInfo.kind === 'close' && stdoutBytes === 0) {
-                console.error(`[YouTube.getStream] yt-dlp exited (code ${exitInfo.code}) with no stdout. stderr:\n${stderrTail}`);
-            } else if (exitInfo.kind === 'error') {
-                console.error(`[YouTube.getStream] yt-dlp spawn error: ${exitInfo.err?.message}`);
+            for (const clientCfg of clientFallbacks) {
+                for (const fmt of formatCandidates) {
+                    const extra = clientCfg.extractorArgs
+                        ? { extractorArgs: clientCfg.extractorArgs, format: fmt }
+                        : { format: fmt };
+
+                    console.log(`[YouTube.getStream] Try client="${clientCfg.label}" format="${fmt}"...`);
+                    const { result, proc, stderrTail } = await this._spawnStreamProc(url, extra);
+
+                    if (result.kind === 'data') {
+                        console.log(`[YouTube.getStream] ✓ client="${clientCfg.label}" format="${fmt}" — data flowing`);
+                        stream = proc;
+                        streamFormat = fmt;
+                        usedClient = clientCfg.label;
+                        break;
+                    }
+
+                    console.warn(`[YouTube.getStream] ✗ client="${clientCfg.label}" format="${fmt}" → ${result.kind}${result.code !== undefined ? ` (code ${result.code})` : ''} stderr:\n${stderrTail || '(empty)'}`);
+                    try { proc.kill(); } catch {}
+                }
+                if (stream) break;
             }
 
+            if (!stream) {
+                throw new Error('All format/client combinations failed. YouTube likely blocked on this IP — set COOKIES_CONTENT or a PO_TOKEN in .env');
+            }
+
+            console.log(`[YouTube.getStream] Stream ready — client=${usedClient}, format=${streamFormat}`);
+
             return {
-                stream: ytdlpStream.stdout,
+                stream: stream.stdout,
                 url: null,
                 rawUrl: null,
-                type: info?.acodec?.includes('opus') ? 'opus' : 'arbitrary',
+                type: acodec?.includes('opus') ? 'opus' : 'arbitrary',
                 duration,
                 bitrate,
                 canSeek: false,
-                format: info?.format || 'unknown',
+                format: streamFormat,
                 httpHeaders: {}
             };
 
         } catch (error) {
+            console.error(`[YouTube.getStream] FAILED: ${error.message}`);
             throw error;
         }
     }

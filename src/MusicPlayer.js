@@ -905,6 +905,7 @@ class MusicPlayer {
                 let audioStream;
                 if (typeof streamInfo === 'object' && streamInfo.stream) {
                     audioStream = streamInfo.stream;
+                    console.log(`[Playback] Using provider stream (${streamInfo.format || 'unknown'}) for "${this.currentTrack.title}"`);
                 } else if (typeof streamUrl_final === 'string') {
                     const fetch = await ensureFetch();
                     
@@ -920,6 +921,7 @@ class MusicPlayer {
                         audioStream = typeof response.body?.getReader === 'function' && typeof Readable.fromWeb === 'function' 
                             ? Readable.fromWeb(response.body) 
                             : response.body;
+                        console.log(`[Playback] Using HTTP stream for "${this.currentTrack.title}"`);
                     } catch (fetchError) {
                         // Wait for download to complete
                         for (let i = 0; i < 30; i++) {
@@ -938,6 +940,23 @@ class MusicPlayer {
                     }
                 } else {
                     audioStream = streamUrl_final;
+                    console.log(`[Playback] Using direct stream for "${this.currentTrack.title}"`);
+                }
+
+                // Diagnose: check if audioStream actually produces data
+                if (audioStream && typeof audioStream.on === 'function') {
+                    let bytesReceived = 0;
+                    const dataChecker = audioStream.on('data', chunk => {
+                        bytesReceived += chunk.length;
+                    });
+                    setTimeout(() => {
+                        if (bytesReceived === 0) {
+                            console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack.title}"`);
+                        } else {
+                            console.log(`[Playback] ✅ Stream producing data: ${(bytesReceived / 1024).toFixed(1)}KB received in first 5s`);
+                        }
+                        audioStream.removeListener('data', dataChecker);
+                    }, 5000);
                 }
 
                 // If streaming failed and we got a downloaded file, skip to file playback
@@ -949,12 +968,18 @@ class MusicPlayer {
                         ? ['-ss', (resumeFromMs / 1000).toFixed(3)] 
                         : [];
                     
+                    if (!ffmpegPath) {
+                        console.error(`[Playback] ffmpeg-static path is NULL — ffmpeg not found!`);
+                    } else if (typeof ffmpegPath === 'string' && !fsSync.existsSync(ffmpegPath)) {
+                        console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
+                    }
+
                     const ffmpegProcess = new prism.FFmpeg({
                         command: ffmpegPath,
                         args: [
                             ...seekArgs,  // Add seek if resuming
                             '-analyzeduration', '0',
-                            '-loglevel', '0',
+                            '-loglevel', 'warning',
                             '-i', 'pipe:0',
                             ...this._buildFilterArgs(),
                             '-b:a', `${this.audioQuality || 128}k`,
@@ -964,10 +989,18 @@ class MusicPlayer {
                         ]
                     });
 
+                    let ffmpegStderr = '';
                     ffmpegProcess.on('error', (err) => {
                         if (err.message && err.message.includes('Premature close')) return;
                         console.error('❌ FFmpeg streaming error:', err.message);
+                        console.error('   stderr:', ffmpegStderr.slice(-500) || '(none)');
                     });
+                    // prism.FFmpeg exposes the child process via .process
+                    if (ffmpegProcess.process && ffmpegProcess.process.stderr) {
+                        ffmpegProcess.process.stderr.on('data', d => {
+                            ffmpegStderr += d.toString();
+                        });
+                    }
 
                     audioStream.pipe(ffmpegProcess, { highWaterMark: 1024 * 1024 });
 
@@ -992,13 +1025,19 @@ class MusicPlayer {
                     ? ['-ss', (resumeFromMs / 1000).toFixed(3)] 
                     : [];
                 
+                if (!ffmpegPath) {
+                    console.error(`[Playback] ffmpeg-static path is NULL`);
+                } else if (typeof ffmpegPath === 'string' && !fsSync.existsSync(ffmpegPath)) {
+                    console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
+                }
+
                 const ffmpegProcess = new prism.FFmpeg({
                     command: ffmpegPath,
                     args: [
                         ...seekArgs,  // Add seek BEFORE input for faster seeking
                         '-i', downloadedFile,
                         '-analyzeduration', '0',
-                        '-loglevel', '0',
+                        '-loglevel', 'warning',
                         ...this._buildFilterArgs(),
                         '-b:a', `${this.audioQuality || 128}k`,
                         '-f', 's16le',
@@ -1007,10 +1046,17 @@ class MusicPlayer {
                     ]
                 });
 
+                let ffmpegStderr = '';
                 ffmpegProcess.on('error', (err) => {
                     if (err.message && err.message.includes('Premature close')) return;
                     console.error('❌ FFmpeg playback error:', err.message);
+                    console.error('   stderr:', ffmpegStderr.slice(-500) || '(none)');
                 });
+                if (ffmpegProcess.process && ffmpegProcess.process.stderr) {
+                    ffmpegProcess.process.stderr.on('data', d => {
+                        ffmpegStderr += d.toString();
+                    });
+                }
 
                 this.resource = createAudioResource(ffmpegProcess, {
                     inputType: StreamType.Raw,

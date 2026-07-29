@@ -12,21 +12,30 @@ npm test                          # node --check index.js (syntax check only —
 
 ## Non-Obvious Facts
 
-- **5-second startup delay** (`index.js:603`): `commandLoader.js` is `require`d at line 60 purely for its side effect (registers slash commands via Discord REST API), but the `Client` creation is wrapped in `setTimeout(() => {...}, 5000)` to let commands register before connecting.
-- **`ytdlp-exec.js` wrapper** (`src/ytdlp-exec.js`): Converts camelCase option keys to `--kebab-case`, resolves binary from `node_modules/youtube-dl-exec/bin/`. Used by YouTube/SoundCloud/DirectLink, NOT by `ytdl-core`.
-- **YouTube strategy** (`src/YouTube.js`): `player_client=tv,mweb,android_vr,visionos` always set via `extractorArgs`. PO Token added if `YOUTUBE_PO_TOKEN`/`PO_TOKEN` env var is set. Cookies loaded from browser/cookie file/Render secret `/etc/secrets/cookies.txt` are copied to `/tmp/hhmusic-cookies.txt` for write access. Streaming explicitly **deletes** cookies to avoid n-challenge.
-- **`jsRuntimes: 'node'` required** (`src/YouTube.js:14`): yt-dlp 2026.07+ needs a JS runtime with logged-in cookies. Only Deno is auto-detected; add `jsRuntimes: 'node'` explicitly.
-- **`COOKIES_CONTENT` env var** (`index.js:12-20`): If set, writes its content to the configured `cookiesFilePath` at startup — useful for platforms like Railway that can't mount a file.
-- **Session recovery**: `PlayerStateManager` saves active players to `database/playerState.json` on graceful shutdown and restores them on restart (reconnects voice channels, resumes playback). In shard mode, restore is broadcast after a 10s post-spawn delay (`shard.js:95`).
-- **Spotify OAuth flow** (`src/Spotify.js`): The bot runs an HTTP server on port 3000 to handle the OAuth callback. Use `http://127.0.0.1:3000/spotify-callback` (NOT `localhost` — Spotify rejects `localhost` for new apps). Refresh token persisted to `database/spotify_token.json` AND `SPOTIFY_REFRESH_TOKEN` env var.
-- **Spotify API change (2025)**: For apps created after April 2025, `GET /v1/playlists/{id}/tracks` returns 403. Code fetches `GET /v1/playlists/{id}` directly via `node-fetch` with `Authorization` header, parses `meta.items` (top-level items array), and uses `entry.item || entry.track` (`src/Spotify.js:244`). Falls back to the `spotify-web-api-node` npm library.
+- **Startup delay**: `commandLoader.js` is `require`d immediately for its side effect (registers slash commands via Discord REST API). Client creation is wrapped in `setTimeout(() => {...}, 5000)` to let commands register before connecting.
+- **`ytdlp-exec.js` wrapper** (`src/ytdlp-exec.js`): Converts camelCase option keys to `--kebab-case`, resolves binary from `node_modules/youtube-dl-exec/bin/`. Used by YouTube and SoundCloud, NOT by DirectLink or `ytdl-core`.
+- **YouTube auth strategy** (`src/YouTube.js`): 4-tier fallback:
+  1. `cookiesFromBrowser` → `player_client=mweb`
+  2. `cookiesFile` env → `player_client=mweb`
+  3. `COOKIES_CONTENT` env (materialized to temp file via `fs.mkdtempSync`) → `player_client=mweb`
+  4. `poToken` env (`YOUTUBE_PO_TOKEN` or `PO_TOKEN`) → `player_client=web` + `po_token`
+  5. none of the above → `player_client=ios` (no auth)
+  `jsRuntimes` set to `node:${process.execPath}` at line 41 (not just `'node'`). Render secret `/etc/secrets/cookies.txt` is copied to `cookiesFile` or `/tmp/cookies.txt` in `index.js:57-86`.
+- **`COOKIES_CONTENT` env var** (`index.js:46-55`): Raw cookie string materialized to `cookiesFile` path at startup — for platforms like Railway/Render that can't mount a file.
+- **`isLowMemory` hardcoded true** (`src/MusicPlayer.js:39`): Background track downloads are always skipped regardless of actual heap. The Dockerfile `NODE_OPTIONS=--max-old-space-size=384` is advisory only.
+- **Session recovery**: `PlayerStateManager` saves active players to `database/playerState.json` on graceful shutdown and restores them on restart (reconnects voice channels, resumes playback). In shard mode, restore is broadcast after a 10s post-spawn delay (`shard.js:95`). Audio cache cleanup runs after restore.
+- **HTTP server on `PORT`** (`index.js:15-44`): Default port 8080. Handles Spotify OAuth callback (`/spotify-callback`) and health checks (any other path → `200 OK`). Required for Railway/Fly.io so the platform doesn't kill the container during the 5s startup delay.
+- **Spotify OAuth** (`src/Spotify.js`): Default redirect URI `http://127.0.0.1:3000/spotify-callback` (NOT `localhost` — Spotify rejects `localhost` for new apps). Override via `SPOTIFY_REDIRECT_URI` env. Refresh token persisted to `database/spotify_token.json` AND `SPOTIFY_REFRESH_TOKEN` env var. Runs client credentials grant when no refresh token exists.
+- **Spotify API change (2025)**: For apps created after April 2025, `GET /v1/playlists/{id}/tracks` returns 403. Code fetches `GET /v1/playlists/{id}` via `node-fetch` with `Authorization` header, parses `meta.items` (top-level items array), uses `entry.item || entry.track`. Falls back to `spotify-web-api-node` npm lib, then web scrape.
 - **Sharding config**: `TOTAL_SHARDS` (default `auto`), `SHARD_MODE` (`process`/`worker`), `SHARD_SPAWN_DELAY` (5500ms), `SHARD_SPAWN_TIMEOUT` (30000ms).
 - **No test/linter/formatter/TypeScript** — pure CommonJS JavaScript. Only `node --check index.js` for validation.
-- **Required Node.js**: `>=20.0.0` (enforced via `package.json` engines).
+- **Required Node.js**: `>=20.0.0` (package.json engines). Dockerfile uses `node:24-slim`.
 - **ffmpeg bundled** via `ffmpeg-static` — no system install needed.
-- **Postinstall hook** (`scripts/update-ytdlp.js`): Runs `yt-dlp -U` to update binary. YouTube breaks older versions frequently.
+- **Postinstall hook** (`scripts/update-ytdlp.js`): Runs `yt-dlp -U` to update binary.
 - **`database/` and `audio_cache/` are gitignored** — player state, language prefs, Spotify tokens, and cached audio (`track_[MD5].opus`) are local-only.
-- **Audio cache cleaned on startup** (`index.js:62-85`): Deletes files under `audio_cache/` exceeding 200MB until under limit.
+- **Audio cache cleaned after session restore** (`index.js:357`): Deletes files under `audio_cache/` exceeding 200MB (oldest first). Protected files (currently downloading/playing) are skipped.
 - **22 language packs** in `languages/`.
-- **Dockerfile**: `node:24-slim` base, installs system python3 + ffmpeg, `NODE_OPTIONS=--max-old-space-size=128` (keeps heap under 512MB — background download skipped when low memory detected), `EXPOSE 8080`.
-- **Graceful shutdown** (`index.js:556-577`): On SIGINT/SIGTERM, saves all active player states before exiting.
+- **Dockerfile**: `node:24-slim`, installs system python3 + ffmpeg, `NODE_OPTIONS=--max-old-space-size=384`, `EXPOSE 8080`.
+- **Deployment**: `Dockerfile` for Railway.
+- **Graceful shutdown**: `SIGINT`/`SIGTERM` in `init()` saves all active player states before exiting. There are actually two SIGINT handlers (a simple disconnect at top level and the full save in `init`) — the init handler runs first due to registration order.
+- **Autoplay system**: Toggle via button or `/autoplay` command. 20 genres with duration filtering (30s–10min), keyword blocking, and smart search strategy per genre.
