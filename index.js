@@ -36,7 +36,7 @@ const server = http.createServer(async (req, res) => {
     if (parsed.pathname === '/spotify-callback' && parsed.searchParams.get('code')) {
         try {
             const Spotify = require('./src/Spotify');
-            await Spotify.exchangeCode(parsed.query.code);
+            await Spotify.exchangeCode(parsed.searchParams.get('code'));
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<h2>✅ Spotify authorization successful! You can close this window and use the bot now.</h2>');
             console.log('✅ Spotify OAuth callback received and token stored');
