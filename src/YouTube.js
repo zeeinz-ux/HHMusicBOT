@@ -267,15 +267,6 @@ class YouTube {
                 throw new Error(errorMsg);
             }
 
-            // Check yt-dlp binary exists
-            const binPath = youtubedl.binaryPath;
-            const fs = require('fs');
-            if (!fs.existsSync(binPath)) {
-                console.error(`[YouTube.getStream] yt-dlp binary NOT FOUND at: ${binPath}`);
-                throw new Error(`yt-dlp binary not found at ${binPath}`);
-            }
-            console.log(`[YouTube.getStream] yt-dlp binary: ${binPath}`);
-
             // Get metadata first (dumpSingleJson) — also validates the URL works
             const info = await youtubedl(url, this.getYtDlpOptions({ dumpSingleJson: true }));
             if (!info) {
@@ -309,7 +300,6 @@ class YouTube {
                         ? { extractorArgs: clientCfg.extractorArgs, format: fmt }
                         : { format: fmt };
 
-                    console.log(`[YouTube.getStream] Try client="${clientCfg.label}" format="${fmt}"...`);
                     const { result, proc, stderrTail } = await this._spawnStreamProc(url, extra);
 
                     if (result.kind === 'data') {
@@ -320,7 +310,18 @@ class YouTube {
                         break;
                     }
 
-                    console.warn(`[YouTube.getStream] client="${clientCfg.label}" format="${fmt}" -> ${result.kind}${result.code !== undefined ? ` (code ${result.code})` : ''} stderr:\n${stderrTail || '(empty)'}`);
+                    // Only log a one-line summary unless it's an unexpected error
+                    // (timeout / data error). Format-not-available is the expected
+                    // outcome of a normal fallback attempt — keep that quiet.
+                    const reason = result.kind === 'data' ? '' :
+                        result.kind === 'timeout' ? 'timeout (15s)' :
+                        result.kind === 'close' ? `exit code ${result.code ?? '?'}` :
+                        result.kind === 'error' ? `error: ${result.err?.message || 'unknown'}` :
+                        result.kind;
+                    if (result.kind !== 'close' || (result.code && result.code !== 0)) {
+                        const errTail = stderrTail ? stderrTail.split('\n').filter(Boolean).slice(-2).join(' | ') : '';
+                        console.warn(`[YouTube.getStream] ${clientCfg.label}/${fmt} → ${reason}${errTail ? ` [${errTail}]` : ''}`);
+                    }
                     try { proc.kill(); } catch {}
                 }
                 if (stream) break;

@@ -1040,7 +1040,32 @@ class MusicPlayer {
                         ffmpegProcess.process.stdout.on('error', () => {});
                     }
 
-                    audioStream.pipe(ffmpegProcess, { highWaterMark: 1024 * 1024 });
+                    // GH#epipe-fix: use stream.pipeline() instead of stream.pipe().
+                    //
+                    // stream.pipe() does NOT propagate errors from the source to the
+                    // destination, and it does NOT handle EPIPE/ECONNRESET cleanly:
+                    // if the source (yt-dlp stdout) writes while the destination
+                    // (ffmpeg stdin) is briefly not ready — which happens on the very
+                    // first chunk because ffmpeg hasn't started reading yet — the
+                    // underlying socket raises EPIPE, the readable emits 'error',
+                    // and the process can crash. stream.pipeline() handles all of
+                    // that by:
+                    //   1. Forwarding source errors to the destination's destroy().
+                    //   2. Forwarding destination errors to the source's destroy().
+                    //   3. Cleaning up every stream in the chain on any failure.
+                    //
+                    // We call it without awaiting so playback starts immediately,
+                    // and attach an error listener so a broken pipe doesn't bubble
+                    // up as an unhandled exception if the resource hasn't been read
+                    // by Discord yet.
+                    const captureAudioStream = audioStream;
+                    pipeline(captureAudioStream, ffmpegProcess).catch(err => {
+                        // Only log if it's a real error (not just a normal EPIPE
+                        // from the destination closing first when the track ends).
+                        if (err && err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+                            console.error(`❌ Stream pipeline error: ${err.message || err}`);
+                        }
+                    });
 
                     this.resource = createAudioResource(ffmpegProcess, {
                         inputType: StreamType.Raw,
