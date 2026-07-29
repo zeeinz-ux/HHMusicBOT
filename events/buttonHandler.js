@@ -395,7 +395,9 @@ module.exports = {
             );
         }
 
-        await interaction.reply({ embeds: [embed], components, flags: [1 << 6] });
+        const replyOpts = { embeds: [embed] };
+        if (components.length) replyOpts.components = components;
+        await interaction.reply(replyOpts);
     },
 
     async handleQueuePagination(interaction, player) {
