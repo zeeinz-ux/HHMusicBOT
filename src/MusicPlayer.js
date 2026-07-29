@@ -36,7 +36,7 @@ if (!fsSync.existsSync(CACHE_DIR)) {
     fsSync.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-const isLowMemory = true;
+const isLowMemory = false;
 
 let cachedFetch;
 async function ensureFetch() {

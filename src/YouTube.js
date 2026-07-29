@@ -50,20 +50,25 @@ class YouTube {
         };
 
         // Auth priority: Cookies (browser/file/content) > PO Token > iOS client (no auth needed)
-        // Only applied when caller didn't explicitly pass extractorArgs (for fallback cycling).
+        // NOTE: when cookies are valid, do NOT override player_client — let yt-dlp use its
+        // default `web` client. Forcing `mweb` makes yt-dlp pick formats that return signed
+        // URLs incompatible with our server IP, causing 403 Forbidden from googlevideo.com.
+        // Only override when there's no cookies (iOS fallback) or PO token path (uses web).
         const envCookiesPath = materializeCookiesContent();
+        const hasCookieAuth = config.ytdl.cookiesFromBrowser || config.ytdl.cookiesFile || envCookiesPath;
         if (!baseOptions.extractorArgs) {
-            if (config.ytdl.cookiesFromBrowser) {
-                baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
-                baseOptions.extractorArgs = 'youtube:player_client=mweb';
-            } else if (config.ytdl.cookiesFile) {
-                baseOptions.cookies = config.ytdl.cookiesFile;
-                baseOptions.extractorArgs = 'youtube:player_client=mweb';
-            } else if (envCookiesPath) {
-                baseOptions.cookies = envCookiesPath;
-                baseOptions.extractorArgs = 'youtube:player_client=mweb';
-            } else if (config.ytdl.poToken) {
+            if (config.ytdl.poToken) {
                 baseOptions.extractorArgs = `youtube:po_token=web+${config.ytdl.poToken};player_client=web`;
+            } else if (hasCookieAuth) {
+                // Cookies present → pass them through so yt-dlp uses the auth, but do
+                // NOT force player_client (let default `web` client pick formats).
+                if (config.ytdl.cookiesFromBrowser) {
+                    baseOptions.cookiesFromBrowser = config.ytdl.cookiesFromBrowser;
+                } else if (config.ytdl.cookiesFile) {
+                    baseOptions.cookies = config.ytdl.cookiesFile;
+                } else if (envCookiesPath) {
+                    baseOptions.cookies = envCookiesPath;
+                }
             } else {
                 baseOptions.extractorArgs = 'youtube:player_client=ios';
             }
@@ -240,7 +245,11 @@ class YouTube {
             // and it's the stable path.
             const info = await youtubedl(url, this.getYtDlpOptions({
                 dumpSingleJson: true,
-                format: 'bestaudio/best',
+                // Use `protocol^=http` so yt-dlp picks progressive single-file streams
+                // (e.g. format 140 — AAC MP4 single file) over DASH segmented MP4 that
+                // needs extra manifests and is signed for specific clients. Progressive
+                // MP4 is FFmpeg-friendly and works with simple `fetch() + pipe`.
+                format: 'bestaudio[protocol^=http][vcodec=none]/bestaudio/best',
             }));
 
             if (!info || !info.url) {
@@ -265,8 +274,13 @@ class YouTube {
             const acodec = info.acodec || 'unknown';
             const duration = info.duration || 0;
             const bitrate = info.abr || info.tbr || 0;
+            const container = info.ext || 'unknown';
+            const protocol = info.protocol || 'unknown';
+            const headers = info.http_headers || {};
 
-            console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, canSeek: ${canSeek}`);
+            console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, container: ${container}, protocol: ${protocol}, duration: ${duration}s, bitrate: ${bitrate}k, canSeek: ${canSeek}`);
+            console.log(`[YouTube.getStream] yt-dlp http_headers: ${JSON.stringify(headers)}`);
+            console.log(`[YouTube.getStream] format: ${info.format || 'n/a'}`);
             console.log(`[YouTube.getStream] Returning direct URL: ${finalUrl.substring(0, 80)}...`);
 
             return {

@@ -55,13 +55,20 @@ server.listen(serverPort, () => {
 });
 
 // COOKIES_CONTENT env var → write to cookies file at startup
-if (process.env.COOKIES_CONTENT && config.ytdl.cookiesFile) {
-    const cookiesPath = path.resolve(config.ytdl.cookiesFile);
+if (process.env.COOKIES_CONTENT) {
+    // Prefer COOKIES_FILE env var path if set, otherwise write next to this script.
+    const cookiesPath = config.ytdl.cookiesFile
+        ? path.resolve(config.ytdl.cookiesFile)
+        : path.join(__dirname, 'cookies.txt');
     try {
         fs.writeFileSync(cookiesPath, process.env.COOKIES_CONTENT, 'utf-8');
-        console.log(`[COOKIES] Written COOKIES_CONTENT to ${cookiesPath}`);
+        console.log(`[COOKIES] Written COOKIES_CONTENT (${process.env.COOKIES_CONTENT.length} bytes) to ${cookiesPath}`);
+        if (!config.ytdl.cookiesFile) {
+            // Make sure downstream code can find it via config.
+            config.ytdl.cookiesFile = cookiesPath;
+        }
     } catch (e) {
-        console.warn(`[COOKIES] Failed to write COOKIES_CONTENT: ${e.message}`);
+        console.warn(`[COOKIES] Failed to write COOKIES_CONTENT to ${cookiesPath}: ${e.message}`);
     }
 }
 
