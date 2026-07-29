@@ -258,7 +258,7 @@ class YouTube {
         return { result, proc, stderrTail };
     }
 
-    static async getStream(url, guildId = null, startSeconds = 0) {
+    static async getStream(url, guildId = null, startSeconds = 0, opts = {}) {
         try {
             await this._logBinaryVersionOnce();
 
@@ -266,6 +266,11 @@ class YouTube {
                 const errorMsg = guildId ? await LanguageManager.getTranslation(guildId, 'youtube.url_required') : 'URL is required';
                 throw new Error(errorMsg);
             }
+
+            // `silent=true` is used by the preloader so it doesn't spam the logs
+            // for every queued track. Callers that need to see what happened
+            // (e.g. /play) leave it false (the default).
+            const silent = opts.silent === true;
 
             // Get metadata first (dumpSingleJson) — also validates the URL works
             const info = await youtubedl(url, this.getYtDlpOptions({ dumpSingleJson: true }));
@@ -277,7 +282,9 @@ class YouTube {
             const bitrate = info?.abr || info?.tbr || 0;
             const acodec = info?.acodec || 'unknown';
 
-            console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, title: "${info.title}"`);
+            if (!silent) {
+                console.log(`[YouTube.getStream] URL resolved — acodec: ${acodec}, duration: ${duration}s, bitrate: ${bitrate}k, title: "${info.title}"`);
+            }
 
             // Try combinations: formats × client fallback.
             // Different YouTube player clients return different format lists and the
@@ -303,7 +310,9 @@ class YouTube {
                     const { result, proc, stderrTail } = await this._spawnStreamProc(url, extra);
 
                     if (result.kind === 'data') {
-                        console.log(`[YouTube.getStream] client="${clientCfg.label}" format="${fmt}" — data flowing`);
+                        if (!silent) {
+                            console.log(`[YouTube.getStream] client="${clientCfg.label}" format="${fmt}" — data flowing`);
+                        }
                         stream = proc;
                         streamFormat = fmt;
                         usedClient = clientCfg.label;
@@ -331,7 +340,9 @@ class YouTube {
                 throw new Error('All format/client combinations failed. YouTube likely blocked this IP — set COOKIES_CONTENT or a PO_TOKEN in env.');
             }
 
-            console.log(`[YouTube.getStream] Stream ready — client=${usedClient}, format=${streamFormat}`);
+            if (!silent) {
+                console.log(`[YouTube.getStream] Stream ready — client=${usedClient}, format=${streamFormat}`);
+            }
 
             return {
                 stream: stream.stdout,

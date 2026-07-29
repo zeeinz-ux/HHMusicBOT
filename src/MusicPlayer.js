@@ -1982,13 +1982,13 @@ class MusicPlayer {
             // Get stream URL first
             switch (track.platform) {
                 case 'youtube':
-                    streamInfo = await YouTube.getStream(streamUrl, this.guild.id);
+                    streamInfo = await YouTube.getStream(streamUrl, this.guild.id, 0, { silent: true });
                     break;
                 case 'spotify':
                     // Use cached YouTube URL if available
                     if (track.youtubeUrl) {
                         streamUrl = track.youtubeUrl;
-                        streamInfo = await YouTube.getStream(streamUrl, this.guild.id);
+                        streamInfo = await YouTube.getStream(streamUrl, this.guild.id, 0, { silent: true });
                     } else {
                         // Quick YouTube search for Spotify
                         const query = `"${track.title}" "${track.artist}"`;
@@ -1996,7 +1996,7 @@ class MusicPlayer {
                         if (results && results.length > 0) {
                             streamUrl = results[0].url;
                             track.youtubeUrl = streamUrl; // Cache for future use
-                            streamInfo = await YouTube.getStream(streamUrl, this.guild.id);
+                            streamInfo = await YouTube.getStream(streamUrl, this.guild.id, 0, { silent: true });
                         }
                     }
                     break;
