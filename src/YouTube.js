@@ -9,7 +9,7 @@ const path = require('path');
 console.log(`[YOUTUBE-MODULE-LOADED] YouTube.js loaded, binary=${youtubedl.binaryPath}, exists=${fs.existsSync(youtubedl.binaryPath)}`);
 
 // Materialize COOKIES_CONTENT (a raw cookie string from env vars) to a temp file
-// once per process. Returns the path. Used on Railway / Render / other hosts
+// once per process. Returns the path. Used on Railway (and similar cloud hosts)
 // where cookies can't live on disk and must be passed via env vars.
 //
 // yt-dlp has no `--cookies-stdin`, so we have to write to a file. We do this
@@ -55,9 +55,10 @@ class YouTube {
         //   with the same cookies file. Cookies are more stable than PO tokens (weeks
         //   vs hours) so they're preferred when available.
         //
-        // COOKIES_CONTENT env var → raw cookie string from platforms like Railway/Render
-        //   where the filesystem isn't persistent. We materialize it to a temp file
-        //   because yt-dlp has no stdin-cookies option.
+        // COOKIES_CONTENT env var → raw cookie string used on Railway (and similar
+        //   cloud hosts) where the filesystem isn't persistent and cookies must be
+        //   passed via env vars. We materialize it to a temp file because yt-dlp
+        //   has no stdin-cookies option.
         //
         // PO Token → demands player_client=web (which requires the token to work).
         //   Correct format: youtube:po_token=web+TOKEN;player_client=web

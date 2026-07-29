@@ -72,31 +72,33 @@ if (process.env.COOKIES_CONTENT) {
     }
 }
 
-// Auto-detect Render/Bot host secret file at /etc/secrets/cookies.txt
-const renderSecretPath = '/etc/secrets/cookies.txt';
-const renderSecretExists = fs.existsSync(renderSecretPath);
+// Auto-detect platform-specific secret file. Railway uses environment variables
+// (handled by the COOKIES_CONTENT block above); Render uses /etc/secrets.
+// We support both so the bot stays portable across cloud platforms.
+const platformSecretPath = '/etc/secrets/cookies.txt';
+const platformSecretExists = fs.existsSync(platformSecretPath);
 
-if (renderSecretExists && config.ytdl.cookiesFile) {
+if (platformSecretExists && config.ytdl.cookiesFile) {
     const cookiesPath = path.resolve(config.ytdl.cookiesFile);
     try {
         if (!fs.existsSync(cookiesPath)) {
-            const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
+            const cookiesContent = fs.readFileSync(platformSecretPath, 'utf-8');
             fs.writeFileSync(cookiesPath, cookiesContent, 'utf-8');
-            console.log(`[COOKIES] Copied Render secret file to ${cookiesPath}`);
+            console.log(`[COOKIES] Copied secret file from ${platformSecretPath} to ${cookiesPath}`);
         }
     } catch (e) {
-        console.warn(`[COOKIES] Failed to copy Render secret file: ${e.message}`);
+        console.warn(`[COOKIES] Failed to copy secret file: ${e.message}`);
     }
 }
 
 // Fallback: copy to writable temp location if no COOKIES_FILE set
-if (renderSecretExists && !config.ytdl.cookiesFile) {
+if (platformSecretExists && !config.ytdl.cookiesFile) {
     const tmpCookiesPath = '/tmp/cookies.txt';
     try {
         if (!fs.existsSync(tmpCookiesPath)) {
-            const cookiesContent = fs.readFileSync(renderSecretPath, 'utf-8');
+            const cookiesContent = fs.readFileSync(platformSecretPath, 'utf-8');
             fs.writeFileSync(tmpCookiesPath, cookiesContent, 'utf-8');
-            console.log(`[COOKIES] Copied Render secret file to ${tmpCookiesPath}`);
+            console.log(`[COOKIES] Copied secret file to ${tmpCookiesPath}`);
         }
     } catch (e) {
         console.warn(`[COOKIES] Failed to copy to tmp: ${e.message}`);
@@ -108,7 +110,7 @@ const poTokenSet = !!config.ytdl.poToken;
 const cookiesFileSet = !!config.ytdl.cookiesFile;
 const cookiesFromBrowserSet = !!config.ytdl.cookiesFromBrowser;
 const cookiesContentSet = !!process.env.COOKIES_CONTENT;
-console.log(`[CONFIG] YouTube auth: PO_TOKEN=${poTokenSet} COOKIES_FILE=${cookiesFileSet}(${config.ytdl.cookiesFile||'-'}) COOKIES_FROM_BROWSER=${cookiesFromBrowserSet} COOKIES_CONTENT=${cookiesContentSet} RenderSecret=${renderSecretExists}`);
+console.log(`[CONFIG] YouTube auth: PO_TOKEN=${poTokenSet} COOKIES_FILE=${cookiesFileSet}(${config.ytdl.cookiesFile||'-'}) COOKIES_FROM_BROWSER=${cookiesFromBrowserSet} COOKIES_CONTENT=${cookiesContentSet} SecretFile=${platformSecretExists}`);
 
 require("./src/commandLoader"); // Load and deploy commands
 

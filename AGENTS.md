@@ -20,9 +20,9 @@ npm test                          # node --check index.js (syntax check only —
   3. `COOKIES_CONTENT` env (materialized to temp file via `fs.mkdtempSync`) → `player_client=mweb`
   4. `poToken` env (`YOUTUBE_PO_TOKEN` or `PO_TOKEN`) → `player_client=web` + `po_token`
   5. none of the above → `player_client=ios` (no auth)
-  `jsRuntimes` set to `node:${process.execPath}` at line 41 (not just `'node'`). Render secret `/etc/secrets/cookies.txt` is copied to `cookiesFile` or `/tmp/cookies.txt` in `index.js:57-86`.
-- **`COOKIES_CONTENT` env var** (`index.js:46-55`): Raw cookie string materialized to `cookiesFile` path at startup — for platforms like Railway/Render that can't mount a file.
-- **`isLowMemory` hardcoded true** (`src/MusicPlayer.js:39`): Background track downloads are always skipped regardless of actual heap. The Dockerfile `NODE_OPTIONS=--max-old-space-size=384` is advisory only.
+  `jsRuntimes` set to `node:${process.execPath}` at line 41 (not just `'node'`). Render's `/etc/secrets/cookies.txt` is copied to `cookiesFile` or `/tmp/cookies.txt` in `index.js` for portability — Railway users don't need this path since `COOKIES_CONTENT` is the primary mechanism there.
+- **`COOKIES_CONTENT` env var** (`index.js`): Raw cookie string materialized to `cookiesFile` path at startup — primary mechanism for Railway since Railway's filesystem isn't persistent across deploys and secret files can't be mounted like Render's `/etc/secrets`.
+- **`isLowMemory` hardcoded false** (`src/MusicPlayer.js:39`): Background track downloads always run so the play() fallback can switch from failed streaming to a cached file.
 - **Session recovery**: `PlayerStateManager` saves active players to `database/playerState.json` on graceful shutdown and restores them on restart (reconnects voice channels, resumes playback). In shard mode, restore is broadcast after a 10s post-spawn delay (`shard.js:95`). Audio cache cleanup runs after restore.
 - **HTTP server on `PORT`** (`index.js:15-44`): Default port 8080. Handles Spotify OAuth callback (`/spotify-callback`) and health checks (any other path → `200 OK`). Required for Railway/Fly.io so the platform doesn't kill the container during the 5s startup delay.
 - **Spotify OAuth** (`src/Spotify.js`): Default redirect URI `http://127.0.0.1:3000/spotify-callback` (NOT `localhost` — Spotify rejects `localhost` for new apps). Override via `SPOTIFY_REDIRECT_URI` env. Refresh token persisted to `database/spotify_token.json` AND `SPOTIFY_REFRESH_TOKEN` env var. Runs client credentials grant when no refresh token exists.
