@@ -324,11 +324,16 @@ class YouTube {
 
             console.log(`[YouTube.getStream] Stream ready — client=${usedClient}, format=${streamFormat}`);
 
+            let container = null;
+            if (acodec?.includes('opus')) container = 'webm';
+            else if (acodec?.includes('mp4a') || acodec?.includes('aac')) container = 'mp4';
+
             return {
-                stream: stream.stdout,
+                stream: proc.stdout,
                 url: null,
                 rawUrl: null,
                 type: acodec?.includes('opus') ? 'opus' : 'arbitrary',
+                container,
                 duration,
                 bitrate,
                 canSeek: false,

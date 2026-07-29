@@ -946,16 +946,15 @@ class MusicPlayer {
                 // Diagnose: check if audioStream actually produces data
                 if (audioStream && typeof audioStream.on === 'function') {
                     let bytesReceived = 0;
-                    const dataChecker = audioStream.on('data', chunk => {
-                        bytesReceived += chunk.length;
-                    });
+                    const dataListener = chunk => { bytesReceived += chunk.length; };
+                    audioStream.on('data', dataListener);
                     setTimeout(() => {
                         if (bytesReceived === 0) {
                             console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack.title}"`);
                         } else {
                             console.log(`[Playback] ✅ Stream producing data: ${(bytesReceived / 1024).toFixed(1)}KB received in first 5s`);
                         }
-                        audioStream.removeListener('data', dataChecker);
+                        audioStream.removeListener('data', dataListener);
                     }, 5000);
                 }
 
@@ -974,13 +973,15 @@ class MusicPlayer {
                         console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
                     }
 
+                    const inputFormat = streamInfo.container ? ['-f', streamInfo.container] : [];
+
                     const ffmpegProcess = new prism.FFmpeg({
                         command: ffmpegPath,
                         args: [
-                            ...seekArgs,  // Add seek if resuming
-                            '-analyzeduration', '0',
-                            '-loglevel', 'warning',
+                            ...seekArgs,
+                            ...inputFormat,
                             '-i', 'pipe:0',
+                            '-loglevel', 'warning',
                             ...this._buildFilterArgs(),
                             '-b:a', `${this.audioQuality || 128}k`,
                             '-f', 's16le',
