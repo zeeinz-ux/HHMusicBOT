@@ -38,8 +38,10 @@ class YouTube {
         const baseOptions = {
             noCheckCertificates: true,
             noWarnings: true,
-            retries: 3,
-            fragmentRetries: 3,
+            retries: 10,
+            fragmentRetries: 10,
+            extractorRetries: 5,
+            socketTimeout: 60,
             noCacheDir: true,
             jsRuntimes: `node:${process.execPath}`,
             addHeader: [

@@ -614,9 +614,15 @@ class MusicPlayer {
             if (track.platform === 'youtube' || track.platform === 'spotify' || track.platform === 'soundcloud') {
                 const youtubedl = require('./ytdlp-exec');
                 
+                // Use the format that getStream successfully resolved
+                // (e.g. 'worst' for videos where bestaudio is unavailable),
+                // falling back to the default 'bestaudio/best'.
+                const dlFormat = (streamInfo && typeof streamInfo === 'object' && streamInfo.format)
+                    ? streamInfo.format
+                    : 'bestaudio/best';
                 await youtubedl(downloadUrl, {
                     output: filepath,
-                    format: 'bestaudio/best',
+                    format: dlFormat,
                     noCheckCertificates: true,
                     noWarnings: true,
                     preferFreeFormats: true,
