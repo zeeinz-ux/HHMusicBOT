@@ -28,7 +28,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 // Cache directory for downloaded audio files
-const CACHE_DIR = path.join(__dirname, '..', 'audio_cache');
+// Use STATE_DIR env var (Railway volume) when set, otherwise default to local audio_cache/
+const stateDir = process.env.STATE_DIR || path.join(__dirname, '..');
+const CACHE_DIR = path.join(stateDir, 'audio_cache');
 
 // Ensure cache directory exists
 if (!fsSync.existsSync(CACHE_DIR)) {

@@ -1,7 +1,9 @@
 const path = require('path');
 const fs = require('fs');
 
-const DB_FILE_PATH = path.join(__dirname, '..', 'database', 'playerState.json');
+// Use STATE_DIR env var (Railway volume) when set, otherwise default to local database/
+const stateDir = process.env.STATE_DIR || path.join(__dirname, '..');
+const DB_FILE_PATH = path.join(stateDir, 'database', 'playerState.json');
 
 class PlayerStateManager {
     constructor() {

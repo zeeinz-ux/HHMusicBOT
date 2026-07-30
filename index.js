@@ -116,7 +116,8 @@ require("./src/commandLoader"); // Load and deploy commands
 
 // Clean up audio cache directory on startup
 async function cleanupAudioCache() {
-    const cacheDir = path.join(__dirname, 'audio_cache');
+    const stateDir = process.env.STATE_DIR || __dirname;
+    const cacheDir = path.join(stateDir, 'audio_cache');
     const MAX_CACHE_MB = 200;
 
     try {

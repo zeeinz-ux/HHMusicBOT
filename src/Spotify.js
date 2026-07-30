@@ -4,7 +4,8 @@ const LanguageManager = require('./LanguageManager');
 const fs = require('fs');
 const path = require('path');
 
-const TOKEN_PATH = path.join(__dirname, '..', 'database', 'spotify_token.json');
+const stateDir = process.env.STATE_DIR || path.join(__dirname, '..');
+const TOKEN_PATH = path.join(stateDir, 'database', 'spotify_token.json');
 
 class Spotify {
     static spotifyApi = null;
