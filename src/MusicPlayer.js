@@ -566,7 +566,7 @@ class MusicPlayer {
                 }
                 // Partial/corrupt file — clean up and re-download
                 if (stats.size > 0 && stats.size <= minExpected) {
-                    fsSync.unlink(filepath).catch(() => {});
+                    fs.unlink(filepath).catch(() => {});
                 }
             }
 
@@ -703,7 +703,7 @@ class MusicPlayer {
         } catch (error) {
             this.downloadingFiles.delete(filepath); // Remove from downloading set on error
             // Remove partial/corrupt file so it isn't reused as a cache hit
-            fsSync.unlink(filepath).catch(() => {});
+            fs.unlink(filepath).catch(() => {});
             console.error(`❌ Download failed for ${track.title}:`, error.message);
             throw error;
         }
@@ -894,7 +894,7 @@ class MusicPlayer {
                         this.currentDownloadedFile = filepath;
                     } else {
                         // File too small — likely truncated from failed download
-                        fsSync.unlink(filepath).catch(() => {});
+                        fs.unlink(filepath).catch(() => {});
                         shouldDownload = true;
                     }
                 } else {
