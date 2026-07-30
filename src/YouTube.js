@@ -253,7 +253,7 @@ class YouTube {
             const finish = p => { if (!settled) { settled = true; resolve(p); } };
             proc.on('close', code => finish({ kind: 'close', code, stdoutBytes }));
             proc.on('error', err => finish({ kind: 'error', err, stdoutBytes }));
-            const timer = setTimeout(() => finish({ kind: 'timeout', stdoutBytes }), 30000);
+            const timer = setTimeout(() => finish({ kind: 'timeout', stdoutBytes }), 15000);
             onData = () => { clearTimeout(timer); finish({ kind: 'data', proc }); };
             onBytes = d => { stdoutBytes += d.length; };
             proc.stdout.on('data', onData);
@@ -335,7 +335,7 @@ class YouTube {
                     // (timeout / data error). Format-not-available is the expected
                     // outcome of a normal fallback attempt — keep that quiet.
                     const reason = result.kind === 'data' ? '' :
-                        result.kind === 'timeout' ? 'timeout (15s)' :
+                        result.kind === 'timeout' ? 'timeout' :
                         result.kind === 'close' ? `exit code ${result.code ?? '?'}` :
                         result.kind === 'error' ? `error: ${result.err?.message || 'unknown'}` :
                         result.kind;
