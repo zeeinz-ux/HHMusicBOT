@@ -290,7 +290,7 @@ class YouTube {
             // Different YouTube player clients return different format lists and the
             // first one that produces audio bytes wins. With cookies, the default
             // (mweb) usually works; if not, fall back to android then tv.
-            const formatCandidates = ['ba/b', 'bestaudio', 'worstaudio'];
+            const formatCandidates = ['ba/b', 'bestaudio', 'worstaudio', 'worst'];
             const clientFallbacks = [
                 { label: 'default' },                              // whatever getYtDlpOptions picked
                 { label: 'android', extractorArgs: 'youtube:player_client=android' },
