@@ -556,10 +556,17 @@ class MusicPlayer {
             // Check if already downloaded (cache hit)
             if (fsSync.existsSync(filepath)) {
                 const stats = await fs.stat(filepath);
-                if (stats.size > 0) {
+                const minExpected = track?.duration
+                    ? Math.round(track.duration * 4096)
+                    : 0;
+                if (stats.size > minExpected) {
                     this.downloadedFiles.add(filepath);
                     this.scheduleStatePersist('download-cache-hit', 500);
                     return filepath;
+                }
+                // Partial/corrupt file — clean up and re-download
+                if (stats.size > 0 && stats.size <= minExpected) {
+                    fsSync.unlink(filepath).catch(() => {});
                 }
             }
 
@@ -695,6 +702,8 @@ class MusicPlayer {
 
         } catch (error) {
             this.downloadingFiles.delete(filepath); // Remove from downloading set on error
+            // Remove partial/corrupt file so it isn't reused as a cache hit
+            fsSync.unlink(filepath).catch(() => {});
             console.error(`❌ Download failed for ${track.title}:`, error.message);
             throw error;
         }
@@ -876,11 +885,16 @@ class MusicPlayer {
                 
                 if (fsSync.existsSync(filepath)) {
                     const stats = fsSync.statSync(filepath);
-                    if (stats.size > 0) {
+                    const minExpected = this.currentTrack?.duration
+                        ? Math.round(this.currentTrack.duration * 4096) // ~32kbps — catches severely truncated files
+                        : 0;
+                    if (stats.size > minExpected) {
                         downloadedFile = filepath;
                         this.downloadedFiles.add(filepath);
                         this.currentDownloadedFile = filepath;
                     } else {
+                        // File too small — likely truncated from failed download
+                        fsSync.unlink(filepath).catch(() => {});
                         shouldDownload = true;
                     }
                 } else {
@@ -1758,9 +1772,9 @@ class MusicPlayer {
                 this.currentTrackRetries += 1;
                 if (this.currentTrackRetries <= 2) {
                     // Attempt to resume the same track from the last known position
-                    await this.play(null, totalPlaybackMs);
-                    return;
-                } else {
+                    const result = await this.play(null, totalPlaybackMs);
+                    if (result.success) return;
+                    // Resume failed — fall through to skip track
                 }
             } else {
                 this.currentTrackRetries = 0;
@@ -1784,7 +1798,11 @@ class MusicPlayer {
 
             if (this.loop === 'track') {
                 // Loop track from beginning
-                await this.play(null, 0);
+                const result = await this.play(null, 0);
+                if (!result.success) {
+                    // Retry failed too — stop
+                    this.currentTrack = null;
+                }
                 return;
             }
 
@@ -1809,7 +1827,15 @@ class MusicPlayer {
                 }
 
                 // Play next track from beginning
-                await this.play(null, 0);
+                const result = await this.play(null, 0);
+                if (!result.success) {
+                    // Track failed to start — skip it and try the next one
+                    this.currentTrack = null;
+                    this.resource = null;
+                    this.isTransitioning = false;
+                    await this.handleTrackEnd('skip');
+                    return;
+                }
 
                 const MusicEmbedManager = require('./MusicEmbedManager');
                 if (global.clients && global.clients.musicEmbedManager) {
