@@ -118,7 +118,7 @@ require("./src/commandLoader"); // Load and deploy commands
 async function cleanupAudioCache() {
     const stateDir = process.env.STATE_DIR || __dirname;
     const cacheDir = path.join(stateDir, 'audio_cache');
-    const MAX_CACHE_MB = 200;
+    const MAX_CACHE_MB = 80;
 
     try {
         if (fs.existsSync(cacheDir)) {
@@ -377,6 +377,9 @@ setTimeout(() => {
         await restoreSavedPlayers(client);
         await cleanupAudioCache();
         console.log(chalk.green(`[SHARD ${client.shard?.ids?.[0] ?? 'N/A'}] ✅ Session restore complete`));
+
+        // Periodically trim audio cache so the Railway volume doesn't fill up
+        setInterval(() => cleanupAudioCache(), 10 * 60 * 1000);
     };
 
     // Handle interactions (slash commands)
