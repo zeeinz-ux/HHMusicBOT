@@ -166,7 +166,10 @@ async function cleanupAudioCache() {
             }
 
             if (deletedCount > 0 || skippedCount > 0) {
-                console.log(chalk.cyan(`[CACHE] Deleted ${deletedCount} old files, skipped ${skippedCount} protected (${(totalSize / 1024 / 1024).toFixed(1)}MB → max ${MAX_CACHE_MB}MB)`));
+                const msg = `[CACHE] Deleted ${deletedCount} old files${skippedCount ? `, skipped ${skippedCount} protected` : ''} (${(totalSize / 1024 / 1024).toFixed(1)}MB → max ${MAX_CACHE_MB}MB)`;
+                if (deletedCount > 0 || totalSize > maxBytes) {
+                    console.log(chalk.cyan(msg));
+                }
             }
         } else {
             fs.mkdirSync(cacheDir, { recursive: true });
@@ -377,9 +380,6 @@ setTimeout(() => {
         await restoreSavedPlayers(client);
         await cleanupAudioCache();
         console.log(chalk.green(`[SHARD ${client.shard?.ids?.[0] ?? 'N/A'}] ✅ Session restore complete`));
-
-        // Periodically trim audio cache so the Railway volume doesn't fill up
-        setInterval(() => cleanupAudioCache(), 10 * 60 * 1000);
     };
 
     // Handle interactions (slash commands)
