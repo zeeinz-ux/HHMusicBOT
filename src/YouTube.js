@@ -347,7 +347,7 @@ class YouTube {
             }
 
             if (!stream) {
-                throw new Error('All format/client combinations failed. YouTube likely blocked this IP — set COOKIES_CONTENT or a PO_TOKEN in env.');
+                throw new Error(`No playable format found for this video. Check that yt-dlp cookies/auth are valid (acodec=${acodec}, duration=${duration}s).`);
             }
 
             if (!silent) {

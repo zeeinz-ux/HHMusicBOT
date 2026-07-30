@@ -2038,7 +2038,7 @@ class MusicPlayer {
             }
         } catch (error) {
             if (error && error.message) {
-                console.error(`❌ Pre-download failed for ${track.title}:`, error.message);
+                console.warn(`⚠️ Preload skipped for ${track.title}: ${error.message}`);
             }
         } finally {
             // Remove from preloading queue
