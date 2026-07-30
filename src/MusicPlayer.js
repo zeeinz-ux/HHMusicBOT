@@ -616,7 +616,7 @@ class MusicPlayer {
                 
                 await youtubedl(downloadUrl, {
                     output: filepath,
-                    format: 'ba/b',
+                    format: 'bestaudio/best',
                     noCheckCertificates: true,
                     noWarnings: true,
                     preferFreeFormats: true,
@@ -784,14 +784,7 @@ class MusicPlayer {
                         break;
 
                     case 'spotify':
-                        // Use pre-resolved YouTube URL if available (from preloadTrack)
-                        // to avoid searching YouTube again and potentially finding a
-                        // different video with incompatible formats.
-                        if (this.currentTrack.youtubeUrl) {
-                            streamUrl = this.currentTrack.youtubeUrl;
-                            streamInfo = await YouTube.getStream(streamUrl, this.guild.id, resumeFromSeconds);
-                            break;
-                        }
+                        // Enhanced YouTube search for Spotify tracks
 
                         // Enhanced search query with multiple attempts
                         const searchQueries = [
