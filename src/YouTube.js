@@ -331,15 +331,13 @@ class YouTube {
                         break;
                     }
 
-                    // Only log a one-line summary unless it's an unexpected error
-                    // (timeout / data error). Format-not-available is the expected
-                    // outcome of a normal fallback attempt — keep that quiet.
-                    const reason = result.kind === 'data' ? '' :
-                        result.kind === 'timeout' ? 'timeout' :
-                        result.kind === 'close' ? `exit code ${result.code ?? '?'}` :
-                        result.kind === 'error' ? `error: ${result.err?.message || 'unknown'}` :
-                        result.kind;
-                    if (result.kind !== 'close' || (result.code && result.code !== 0)) {
+                    // Silence expected fallbacks — only log unexpected errors
+                    // (exit codes other than 0/1, actual error events).
+                    if (result.kind === 'error' ||
+                        (result.kind === 'close' && result.code && result.code > 1)) {
+                        const reason = result.kind === 'close'
+                            ? `exit code ${result.code}`
+                            : `error: ${result.err?.message || 'unknown'}`;
                         const errTail = stderrTail ? stderrTail.split('\n').filter(Boolean).slice(-2).join(' | ') : '';
                         console.warn(`[YouTube.getStream] ${clientCfg.label}/${fmt} → ${reason}${errTail ? ` [${errTail}]` : ''}`);
                     }
