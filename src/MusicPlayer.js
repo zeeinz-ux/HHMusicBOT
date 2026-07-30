@@ -1011,8 +1011,8 @@ class MusicPlayer {
                         command: ffmpegPath,
                         args: [
                             ...seekArgs,
-                            '-analyzeduration', '0',
-                            '-loglevel', '0',
+                            '-analyzeduration', '1M',
+                            '-loglevel', 'warning',
                             '-i', 'pipe:0',
                             ...filterArgs,
                             '-f', 's16le',

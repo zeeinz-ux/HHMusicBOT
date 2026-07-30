@@ -241,10 +241,10 @@ class YouTube {
         const proc = spawn(youtubedl.binaryPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stderrTail = '';
         let stdoutBytes = 0;
+        let onData, onBytes;
         proc.stderr.on('data', d => {
             stderrTail = (stderrTail + d.toString()).split('\n').slice(-5).join('\n').trim();
         });
-        proc.stdout.on('data', d => { stdoutBytes += d.length; });
 
         const result = await new Promise(resolve => {
             let settled = false;
@@ -252,8 +252,18 @@ class YouTube {
             proc.on('close', code => finish({ kind: 'close', code, stdoutBytes }));
             proc.on('error', err => finish({ kind: 'error', err, stdoutBytes }));
             const timer = setTimeout(() => finish({ kind: 'timeout', stdoutBytes }), 30000);
-            proc.stdout.on('data', () => { clearTimeout(timer); finish({ kind: 'data', proc }); });
+            onData = () => { clearTimeout(timer); finish({ kind: 'data', proc }); };
+            onBytes = d => { stdoutBytes += d.length; };
+            proc.stdout.on('data', onData);
+            proc.stdout.on('data', onBytes);
         });
+
+        // Detach ALL data listeners so the first chunk isn't lost — the
+        // caller (getStream → play()) will attach its own pipeline.
+        if (result.kind === 'data') {
+            if (onData) proc.stdout.removeListener('data', onData);
+            if (onBytes) proc.stdout.removeListener('data', onBytes);
+        }
 
         return { result, proc, stderrTail };
     }
