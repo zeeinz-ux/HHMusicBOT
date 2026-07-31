@@ -1770,16 +1770,11 @@ class MusicPlayer {
             }
 
             const finishedTrack = this.currentTrack;
-            const state = this.audioPlayer?.state;
-            const playbackDuration = state?.resource?.playbackDuration;
-            const isPlaying = state?.status === AudioPlayerStatus.Playing;
-            const playbackOk = isPlaying && Number.isFinite(playbackDuration) && playbackDuration > 0;
-            const playbackMs = playbackOk ? playbackDuration : 0;
-            const totalPlaybackMs = this.currentTrackStartOffsetMs + playbackMs;
+            const totalPlaybackMs = this.getCurrentTime() || 0;
             this.lastPlaybackPosition = totalPlaybackMs;
             const durationMs = finishedTrack && Number(finishedTrack.duration) > 0 ? Number(finishedTrack.duration) * 1000 : 0;
             const manualSkip = reason === 'skip' || reason === 'stop';
-            const endedUnexpectedly = Boolean(finishedTrack) && !manualSkip && playbackOk && durationMs > 0 && totalPlaybackMs + 1500 < durationMs;
+            const endedUnexpectedly = Boolean(finishedTrack) && !manualSkip && durationMs > 0 && totalPlaybackMs + 1500 < durationMs;
 
             if (endedUnexpectedly) {
                 this.currentTrackRetries += 1;
