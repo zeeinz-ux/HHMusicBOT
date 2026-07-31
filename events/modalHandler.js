@@ -1,6 +1,7 @@
 const { Events, EmbedBuilder } = require('discord.js');
 const config = require('../config');
 const LanguageManager = require('../src/LanguageManager');
+const { scheduleAutoDelete } = require('../src/autoDelete');
 
 module.exports = {
     name: Events.InteractionCreate,
@@ -102,6 +103,8 @@ module.exports = {
             });
 
             await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+            const volumeMsg = await interaction.fetchReply();
+            scheduleAutoDelete(volumeMsg);
         } else {
             await interaction.reply({
                 content: await LanguageManager.getTranslation(guild?.id, 'modalhandler.volume_error'),

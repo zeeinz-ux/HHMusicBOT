@@ -113,6 +113,8 @@ class MusicPlayer {
         this.activeStreamInfo = null;
         this.lastPlaybackPosition = 0;
         this.currentTrackStartOffsetMs = 0;
+        this.pendingAutoplayTrack = null;
+        this.preparingAutoplay = false;
 
         // Lyrics system (button-only, no sync)
         this.currentLyrics = null; // Lyrics data for current track
@@ -1230,6 +1232,11 @@ class MusicPlayer {
             // Fetch and start lyrics system
             this.fetchAndStartLyrics();
 
+            // Preload the next autoplay candidate while this track plays (last queue track only)
+            if (this.autoplay && this.queue.length === 0 && !this.pendingAutoplayTrack && !this.preparingAutoplay) {
+                this.prepareAutoplayCandidate().catch(() => {});
+            }
+
             return { success: true, track: this.currentTrack };
 
         } catch (error) {
@@ -1763,12 +1770,16 @@ class MusicPlayer {
             }
 
             const finishedTrack = this.currentTrack;
-            const playbackMs = this.resource?.playbackDuration || 0;
+            const state = this.audioPlayer?.state;
+            const playbackDuration = state?.resource?.playbackDuration;
+            const isPlaying = state?.status === AudioPlayerStatus.Playing;
+            const playbackOk = isPlaying && Number.isFinite(playbackDuration) && playbackDuration > 0;
+            const playbackMs = playbackOk ? playbackDuration : 0;
             const totalPlaybackMs = this.currentTrackStartOffsetMs + playbackMs;
             this.lastPlaybackPosition = totalPlaybackMs;
             const durationMs = finishedTrack && Number(finishedTrack.duration) > 0 ? Number(finishedTrack.duration) * 1000 : 0;
             const manualSkip = reason === 'skip' || reason === 'stop';
-            const endedUnexpectedly = Boolean(finishedTrack) && !manualSkip && durationMs > 0 && totalPlaybackMs + 1500 < durationMs;
+            const endedUnexpectedly = Boolean(finishedTrack) && !manualSkip && playbackOk && durationMs > 0 && totalPlaybackMs + 1500 < durationMs;
 
             if (endedUnexpectedly) {
                 this.currentTrackRetries += 1;
@@ -1900,35 +1911,39 @@ class MusicPlayer {
             const lastTrack = this.previousTracks[this.previousTracks.length - 1];
             const lastUrl = lastTrack?.youtubeUrl || lastTrack?.url;
 
-            // Strategy 1: Get related videos from the last played track (smartest)
-            let tracks = [];
-            if (lastUrl && YouTube.isYouTubeURL(lastUrl)) {
-                try {
-                    tracks = await YouTube.getRelated(lastUrl, this.guild.id);
-                } catch (e) { /* fallback to search */ }
-            }
+            // Fast path: use the candidate preloaded while the last track was playing
+            let randomTrack = this.pendingAutoplayTrack;
+            this.pendingAutoplayTrack = null;
 
-            // Strategy 2: Search by the last track's artist if related failed
-            if (tracks.length === 0) {
-                const artist = lastTrack?.artist;
-                const currentYear = new Date().getFullYear();
-                const keywords = (artist && artist !== 'Unknown Artist')
-                    ? [`${artist} official music`, `${artist} songs`, `${artist} music`]
-                    : ['music official video', `top songs ${currentYear}`, 'best music'];
-                const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
-                const results = await YouTube.search(randomKeyword, 15, this.guild.id);
-                tracks = results || [];
-            }
+            if (!randomTrack) {
+                const hint = this.detectRegionHint();
 
-            const filteredTracks = this.filterAutoplayTracks(tracks);
-            if (filteredTracks.length === 0) {
-                console.warn('⚠️ Autoplay: no candidates found, ending playback');
-                return false;
-            }
+                // Strategy 1: Get related videos from the last played track (smartest)
+                let tracks = [];
+                if (lastUrl && YouTube.isYouTubeURL(lastUrl)) {
+                    try {
+                        tracks = await YouTube.getRelated(lastUrl, this.guild.id);
+                    } catch (e) { /* fallback to search */ }
+                }
 
-            // Pick random from filtered results
-            const randomTrack = filteredTracks[Math.floor(Math.random() * filteredTracks.length)];
-            this.prepareAutoplayTrack(randomTrack);
+                // Strategy 2: Region-aware search by the last track's artist if related failed
+                if (tracks.length === 0) {
+                    const keywords = this.buildAutoplayKeywords(lastTrack, hint);
+                    const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
+                    const results = await YouTube.search(randomKeyword, 15, this.guild.id);
+                    tracks = this.filterByRegion(results || [], hint);
+                }
+
+                const filteredTracks = this.filterAutoplayTracks(tracks);
+                if (filteredTracks.length === 0) {
+                    console.warn('⚠️ Autoplay: no candidates found, ending playback');
+                    return false;
+                }
+
+                // Pick random from filtered results
+                randomTrack = filteredTracks[Math.floor(Math.random() * filteredTracks.length)];
+                this.prepareAutoplayTrack(randomTrack);
+            }
 
             this.queue.push(randomTrack);
             this.currentTrack = this.queue.shift();
@@ -1971,19 +1986,104 @@ class MusicPlayer {
         });
     }
 
+    detectRegionHint() {
+        const corpus = [...this.previousTracks, ...this.queue]
+            .map(t => `${t.title || ''} ${t.artist || ''}`)
+            .join(' ');
+        if (!corpus.trim()) return null;
+
+        const scriptMap = [
+            { lang: 'hindi', re: /[\u0900-\u097F]/ },
+            { lang: 'arabic', re: /[\u0600-\u06FF]/ },
+            { lang: 'korean', re: /[\uAC00-\uD7AF]/ },
+            { lang: 'japanese', re: /[\u3040-\u30FF]/ },
+            { lang: 'russian', re: /[\u0400-\u04FF]/ },
+            { lang: 'thai', re: /[\u0E00-\u0E7F]/ },
+        ];
+        for (const s of scriptMap) {
+            if (s.re.test(corpus)) return { lang: s.lang, script: s.re };
+        }
+        if (/[\u4E00-\u9FFF]/.test(corpus)) return { lang: 'chinese', script: /[\u4E00-\u9FFF]/ };
+
+        const idWords = ['cinta', 'aku', 'kamu', 'ku ', 'kau', 'kita', 'yang', 'lagu', 'dari', 'untuk',
+            'dengan', 'tidak', 'sudah', 'belum', 'bisa', 'jangan', 'akan', 'ini', 'itu', 'saat', 'masih',
+            'tapi', 'karena', 'seperti', 'semua', 'hati', 'rindu', 'kangen', 'bahagia', 'malam', 'senja',
+            'dangdut', 'koplo', 'reggae', 'lirik', 'indonesia'];
+        const lower = corpus.toLowerCase();
+        const hits = idWords.filter(w => lower.includes(w));
+        if (hits.length >= 2) return { lang: 'indonesian', script: null };
+        return null;
+    }
+
+    buildAutoplayKeywords(track, hint) {
+        const currentYear = new Date().getFullYear();
+        const artist = track?.artist && track.artist !== 'Unknown Artist' ? track.artist : null;
+
+        const langMap = {
+            hindi: ['hindi song', 'hindi viral songs', 'hindi top songs'],
+            arabic: ['arabic song', 'arabic viral songs', 'arabic top songs'],
+            korean: ['korean song', 'korean viral songs', 'korean top songs'],
+            japanese: ['japanese song', 'japanese viral songs', 'japanese top songs'],
+            chinese: ['chinese song', 'chinese viral songs', 'chinese top songs'],
+            russian: ['russian song', 'russian viral songs', 'russian top songs'],
+            thai: ['thai song', 'thai viral songs', 'thai top songs'],
+        };
+
+        if (hint && hint.lang === 'indonesian') {
+            const artistKw = artist ? `${artist} lagu indonesia` : `musik indonesia ${currentYear}`;
+            return [artistKw, `lagu viral indonesia ${currentYear}`, `top lagu indonesia ${currentYear}`];
+        }
+
+        if (hint && langMap[hint.lang]) {
+            const [song, viral, top] = langMap[hint.lang];
+            const artistKw = artist ? `${artist} ${song}` : `${hint.lang} music ${currentYear}`;
+            return [artistKw, `${viral} ${currentYear}`, `${top} ${currentYear}`];
+        }
+
+        if (artist) {
+            return [`${artist} official music`, `${artist} songs`, `top songs ${currentYear}`];
+        }
+        return ['music official video', `top songs ${currentYear}`, 'trending songs'];
+    }
+
+    filterByRegion(tracks, hint) {
+        if (!Array.isArray(tracks) || !hint || !hint.script) return tracks;
+        const matching = tracks.filter(t => hint.script.test(`${t.title || ''} ${t.artist || ''}`));
+        return matching.length >= 3 ? matching : tracks;
+    }
+
+    async prepareAutoplayCandidate() {
+        if (!this.autoplay || this.preparingAutoplay || this.pendingAutoplayTrack) return;
+        this.preparingAutoplay = true;
+        try {
+            const YouTube = require('./YouTube');
+            const lastTrack = this.previousTracks[this.previousTracks.length - 1];
+            const lastUrl = lastTrack?.youtubeUrl || lastTrack?.url;
+            if (!lastUrl || !YouTube.isYouTubeURL(lastUrl)) return;
+
+            const tracks = await YouTube.getRelated(lastUrl, this.guild.id);
+            const filtered = this.filterAutoplayTracks(tracks);
+            if (filtered.length === 0) return;
+
+            if (this.queue.length > 0) return;
+
+            const pick = filtered[Math.floor(Math.random() * filtered.length)];
+            this.pendingAutoplayTrack = this.prepareAutoplayTrack(pick);
+            await this.preloadTrack(this.pendingAutoplayTrack).catch(() => {});
+        } catch (error) {
+            if (error?.message) console.warn(`⚠️ Autoplay candidate prep skipped: ${error.message}`);
+        } finally {
+            this.preparingAutoplay = false;
+        }
+    }
+
     async refillAutoplayQueue(maxTracks = 50) {
         if (!this.autoplay) return;
 
         const YouTube = require('./YouTube');
         const lastTrack = this.previousTracks[this.previousTracks.length - 1];
-        const currentYear = new Date().getFullYear();
-        const artist = lastTrack?.artist;
-
-        const queries = (artist && artist !== 'Unknown Artist')
-            ? [`${artist} official music`, `${artist} songs`, `${artist} music`,
-                `top songs ${currentYear}`, 'trending songs']
-            : ['music official video', `top songs ${currentYear}`, 'best music',
-                `new music ${currentYear}`, 'trending songs'];
+        const hint = this.detectRegionHint();
+        const queries = this.buildAutoplayKeywords(lastTrack, hint);
 
         const seen = new Set();
         const currentUrl = this.currentTrack?.url;
@@ -2002,7 +2102,8 @@ class MusicPlayer {
             }
         }
 
-        const filtered = this.filterAutoplayTracks(candidates);
+        let filtered = this.filterAutoplayTracks(candidates);
+        filtered = this.filterByRegion(filtered, hint);
         filtered.sort(() => Math.random() - 0.5);
 
         for (const track of filtered) {
@@ -2395,6 +2496,9 @@ class MusicPlayer {
 
                 await this.textChannel.send({
                     content: `▶️ ${resumeMessage} • **${this.currentTrack.title || 'Unknown'}** (${positionFormatted})`
+                }).then(msg => {
+                    const { scheduleAutoDelete } = require('./autoDelete');
+                    scheduleAutoDelete(msg);
                 });
             } catch (error) {
                 // Ignore if message cannot be sent
@@ -2591,6 +2695,8 @@ class MusicPlayer {
             this.queue = [];
             this.currentTrack = null;
             this.previousTracks = [];
+            this.pendingAutoplayTrack = null;
+            this.preparingAutoplay = false;
             this.startTime = null;
             this.pausedTime = 0;
             this.currentTrackCache = null;

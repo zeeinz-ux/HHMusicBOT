@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../config');
 const LanguageManager = require('../src/LanguageManager');
+const { scheduleAutoDelete } = require('../src/autoDelete');
 
 const TRACKS_PER_PAGE = 10;
 
@@ -32,6 +33,8 @@ module.exports = {
 
             const result = this.buildQueueEmbed(player, queueInfo, 0, guild.id);
             await interaction.reply({ embeds: [result.embed], components: result.buttons, flags: [1 << 6] });
+            const queueMsg = await interaction.fetchReply();
+            scheduleAutoDelete(queueMsg);
         } catch (error) {
             console.error('❌ /queue error:', error);
             await interaction.reply({

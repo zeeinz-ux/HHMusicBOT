@@ -2,6 +2,7 @@ const { Events, EmbedBuilder, ActionRowBuilder, ModalBuilder, TextInputBuilder, 
 const config = require('../config');
 const LanguageManager = require('../src/LanguageManager');
 const MusicPlayer = require('../src/MusicPlayer');
+const { scheduleAutoDelete } = require('../src/autoDelete');
 
 module.exports = {
     name: Events.InteractionCreate,
@@ -186,6 +187,8 @@ module.exports = {
             }
 
             await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+            const pauseMsg = await interaction.fetchReply();
+            scheduleAutoDelete(pauseMsg);
 
             // Ana embed'deki butonları güncelle (pause/resume değişimi)
             if (interaction.client.musicEmbedManager) {
@@ -258,6 +261,8 @@ module.exports = {
             }
 
             await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+            const skipMsg = await interaction.fetchReply();
+            scheduleAutoDelete(skipMsg);
 
             // Embed Manager ile ana embed'i güncelle
             if (interaction.client.musicEmbedManager && player.currentTrack) {
@@ -286,6 +291,8 @@ module.exports = {
                 content: await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.moved_to_previous'),
                 flags: [1 << 6]
             });
+            const prevMsg = await interaction.fetchReply();
+            scheduleAutoDelete(prevMsg);
         } else {
             await interaction.reply({
                 content: await LanguageManager.getTranslation(interaction.guild?.id, 'buttonhandler.previous_failed'),
@@ -327,6 +334,8 @@ module.exports = {
         }
 
         await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+        const stopMsg = await interaction.fetchReply();
+        scheduleAutoDelete(stopMsg);
 
         // Ana embed'deki butonları disable yap
         if (client.musicEmbedManager) {
@@ -398,9 +407,11 @@ module.exports = {
             );
         }
 
-        const replyOpts = { embeds: [embed] };
+        const replyOpts = { embeds: [embed], flags: [1 << 6] };
         if (components.length) replyOpts.components = components;
         await interaction.reply(replyOpts);
+        const queueMsg = await interaction.fetchReply();
+        scheduleAutoDelete(queueMsg);
     },
 
     async handleQueuePagination(interaction, player) {
@@ -494,6 +505,8 @@ module.exports = {
         );
 
         await interaction.update({ embeds: [embed], components: [row] });
+        const pageMsg = await interaction.fetchReply();
+        scheduleAutoDelete(pageMsg);
     },
 
     async handleShuffle(interaction, player, requesterId) {
@@ -547,6 +560,8 @@ module.exports = {
         }
 
         await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+        const shuffleMsg = await interaction.fetchReply();
+        scheduleAutoDelete(shuffleMsg);
 
         // Ana embed'i güncelle
         if (interaction.client.musicEmbedManager) {
@@ -642,6 +657,8 @@ module.exports = {
         }
 
         await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+        const loopMsg = await interaction.fetchReply();
+        scheduleAutoDelete(loopMsg);
 
         // Update the main embed to reflect the new loop mode
         if (interaction.client.musicEmbedManager) {
@@ -669,6 +686,8 @@ module.exports = {
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+            const autoplayOffMsg = await interaction.fetchReply();
+            scheduleAutoDelete(autoplayOffMsg);
 
             // Update the main embed
             if (interaction.client.musicEmbedManager) {
@@ -688,6 +707,8 @@ module.exports = {
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed], flags: [1 << 6] });
+        const autoplayOnMsg = await interaction.fetchReply();
+        scheduleAutoDelete(autoplayOnMsg);
 
         // Update the main embed
         if (interaction.client.musicEmbedManager) {

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const config = require('../config');
 const LanguageManager = require('../src/LanguageManager');
+const { scheduleAutoDelete } = require('../src/autoDelete');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -177,8 +178,11 @@ module.exports = {
           
 
             await interaction.reply({
-                embeds: [embed]
+                embeds: [embed],
+                flags: [1 << 6]
             });
+            const npMsg = await interaction.fetchReply();
+            scheduleAutoDelete(npMsg);
 
         } catch (error) {
             const guildId = interaction.guild.id;
