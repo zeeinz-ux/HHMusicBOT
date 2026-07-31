@@ -1733,8 +1733,10 @@ class MusicPlayer {
     }
 
     getCurrentTime() {
-        const playbackDuration = this.audioPlayer?.state?.resource?.playbackDuration;
-        if (typeof playbackDuration === 'number' && Number.isFinite(playbackDuration)) {
+        const state = this.audioPlayer?.state;
+        const playbackDuration = state?.resource?.playbackDuration;
+        const isPlaying = state?.status === AudioPlayerStatus.Playing;
+        if (isPlaying && typeof playbackDuration === 'number' && Number.isFinite(playbackDuration) && playbackDuration > 0) {
             return this.currentTrackStartOffsetMs + playbackDuration;
         }
 
@@ -1896,23 +1898,16 @@ class MusicPlayer {
         if (lastUrl && YouTube.isYouTubeURL(lastUrl)) {
             try {
                 tracks = await YouTube.getRelated(lastUrl, this.guild.id);
-            } catch (e) { /* fallback to genre search */ }
+            } catch (e) { /* fallback to search */ }
         }
 
-        // Strategy 2: Genre-based search if related failed
-        if (tracks.length === 0 && typeof this.autoplay === 'string') {
-            const genreKeywords = {
-                pop: ['pop music 2024', 'top pop songs', 'pop hits official'],
-                rock: ['rock music official', 'rock songs 2024', 'classic rock hits'],
-                hiphop: ['hip hop music', 'rap songs official', 'hip hop 2024'],
-                electronic: ['edm music', 'electronic dance music', 'house music official'],
-                jazz: ['jazz music', 'jazz standards', 'smooth jazz official'],
-                lofi: ['lofi hip hop music', 'lofi beats official', 'chill lofi music'],
-                kpop: ['kpop official mv', 'kpop songs 2024', 'korean music official'],
-                anime: ['anime opening official', 'anime songs official', 'anime music 2024'],
-                random: ['music official video', 'top songs 2024', 'best music']
-            };
-            const keywords = genreKeywords[this.autoplay] || genreKeywords.random;
+        // Strategy 2: Search by the last track's artist if related failed
+        if (tracks.length === 0) {
+            const artist = lastTrack?.artist;
+            const currentYear = new Date().getFullYear();
+            const keywords = (artist && artist !== 'Unknown Artist')
+                ? [`${artist} official music`, `${artist} songs`, `${artist} music`]
+                : ['music official video', `top songs ${currentYear}`, 'best music'];
             const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
             const results = await YouTube.search(randomKeyword, 15, this.guild.id);
             tracks = results || [];

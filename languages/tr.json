@@ -263,11 +263,8 @@
     "changed_by": "👤 Değiştiren",
     "autoplay_disabled": "Otomatik Çalma Kapatıldı",
     "autoplay_disabled_desc": "Otomatik müzik çalma özelliği kapatıldı.",
-    "autoplay_select_title": "Otomatik Çalma için Tarz Seçin",
-    "autoplay_select_desc": "Sıra bittiğinde hangi tarzda müzikler çalınsın?",
-    "autoplay_select_genre": "Bir müzik türü seçin...",
     "autoplay_enabled": "Otomatik Çalma Etkinleştirildi",
-    "autoplay_enabled_desc": "Otomatik çalma **{genre}** türü için etkinleştirildi. Sıra bittiğinde otomatik olarak yeni müzikler eklenecek.",
+    "autoplay_related_desc": "Otomatik oynatma artık etkin. Sıra bittiğinde bot, son çalınan şarkıya benzer şarkıları otomatik olarak kuyruğa ekleyecektir.",
     "no_lyrics_found": "Bu şarkı için şarkı sözü bulunamadı.",
     "lyrics_unavailable": "Şarkı sözleri mevcut değil.",
     "lyrics_title": "Şarkı Sözleri",
@@ -296,28 +293,6 @@
     "autoplay_on": "Otomatik Çalma: Açık",
     "lyrics": "Şarkı Sözleri"
   },
-  "genres": {
-    "pop": "Pop",
-    "rock": "Rock",
-    "hiphop": "Hip-Hop",
-    "electronic": "Elektronik",
-    "jazz": "Caz",
-    "classical": "Klasik",
-    "metal": "Metal",
-    "country": "Country",
-    "rnb": "R&B",
-    "indie": "Indie",
-    "latin": "Latin",
-    "kpop": "K-Pop",
-    "anime": "Anime",
-    "lofi": "Lo-Fi",
-    "blues": "Blues",
-    "reggae": "Reggae",
-    "disco": "Disco",
-    "punk": "Punk",
-    "ambient": "Ambient",
-    "random": "Rastgele"
-  },
   "permissions": {
     "music_control_title": "🎛️ Kontrol Yetkileri",
     "music_control_requirement": "Müziği yönetmek için müziği başlatan kişi siz olmalısınız veya Sunucuyu Yönet yetkisine sahip olmalısınız veya DJ isimli bir role sahip olmalısınız."
@@ -335,4 +310,4 @@
     "voice_no_permission": "❌ **Ses kanalı izni eksik**\nBotun ses kanalınıza katılma veya konuşma izni yok.\n\n**Çözüm:** Ses kanalı ayarları → İzinler → Bota **Bağlan** ve **Konuş** izinleri verin.",
     "unknown": "❌ **Beklenmeyen bir hata oluştu**\nİsteğiniz işlenirken bir şeyler ters gitti.\n\n**Çözüm:** Bir an sonra tekrar deneyin. Sorun devam ederse bot konsolundaki tam hata günlüğünü kontrol edin."
   }
-}
+}

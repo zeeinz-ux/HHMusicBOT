@@ -43,7 +43,7 @@
 | 🎛️ **Dynamic Embeds** | Auto-refreshing "Now Playing" cards with cover art, platform badges, queue countdowns, and localized metadata. |
 | 🪄 **Smart Queue** | Instant mix-ins, sequential preloading, shuffle with DJ-only guardrails, and playlist collapsing to keep channels tidy. |
 | 🔁 **Loop Modes** | Three-way loop toggle: Off, Track Repeat (endless current song), or Queue Repeat (restart queue when finished). |
-| 🎲 **Autoplay Engine** | Genre-aware autoplay with intelligent filtering—select from 20 genres (Pop, Rock, Hip-Hop, Anime, Lo-Fi, etc.) and the bot automatically queues matching music when your queue ends, filtering out tutorials, podcasts, and non-music content with smart duration and keyword detection. |
+| 🎲 **Autoplay Engine** | Smart autoplay that automatically queues music similar to the last played track when your queue ends, filtering out tutorials, podcasts, and non-music content with smart duration and keyword detection. |
 | 💾 **Local Audio Cache** | All tracks are pre-downloaded and cached locally to eliminate stream interruptions, network lag, and voice crackling—delivering buffer-free playback even during peak Discord load or ISP throttling. |
 | 🛡️ **Resilient Playback** | Voice connection watchdog, stream retry logic, idle auto-disconnect, and graceful SIGINT shutdown. |
 | 🧠 **Localization** | Cached translations via `node-json-db` with runtime language switching and fallback logic. |
@@ -444,7 +444,7 @@ SHARD_RESPAWN=false
 - **🔀 Shuffle** – Randomizes the queue with guard rails (min. 2 tracks).
 - **🔊 Volume** – Opens a modal allowing 0–100 input.
 - **🔁 Loop** – Cycles through loop modes: Off → Track Repeat → Queue Repeat. Track mode replays the current song endlessly; Queue mode restarts the entire queue when finished.
-- **🎲 Autoplay** – Toggles genre-based autoplay (Off → On with genre selection). When enabled, the bot automatically adds matching music from your selected genre when the queue ends, keeping the music flowing seamlessly.
+- **🎲 Autoplay** – Toggles smart autoplay (Off → On). When enabled, the bot automatically queues songs similar to the last played track when the queue ends, keeping the music flowing seamlessly.
 
 All button sessions carry a short-lived signature, preventing stale interactions from previous queues.
 
@@ -456,12 +456,17 @@ HHMusic features an intelligent autoplay engine that keeps the music flowing whe
 
 ### 🔄 How It Works
 
-1. **Enable Autoplay** – Click the 🎲 Autoplay button on the now-playing embed
-2. **Choose Your Genre** – Select from 20 carefully curated genres:
-   - 🎵 Pop, Rock, Hip-Hop, Electronic, Jazz, Classical, Metal, Country
-   - 🎸 R&B, Indie, Latin, K-Pop, Anime, Lo-Fi, Blues, Reggae
-   - 🎹 Disco, Punk, Ambient, or Random (all genres)
-3. **Sit Back & Enjoy** – When your queue ends, the bot automatically searches and queues relevant tracks
+1. **Enable Autoplay** – Click the 🎲 Autoplay button on the now-playing embed, or use `/autoplay`
+2. **Play What You Like** – Just queue songs as usual. No genre to pick — autoplay figures out your vibe automatically
+3. **Sit Back & Enjoy** – When your queue ends, the bot searches for and queues tracks similar to the last played song
+
+### 🧠 How It Finds Similar Music
+
+The autoplay engine picks the next track in this order:
+
+1. **Related Videos** – Grabs YouTube's related videos from the **last played track** (smartest match, keeps the same style/genre)
+2. **Artist Search** – If related videos fail, searches YouTube using the last track's **artist name** (e.g. `"Dewa 19 official music"`)
+3. **Generic Fallback** – If there's no artist info, falls back to general music keywords like `music official video` or `top songs {current year}`
 
 ### 🧠 Smart Content Filtering
 
@@ -486,23 +491,6 @@ Automatically skips content containing:
 - Blocks playlist-style titles with many brackets
 - Prioritizes official music videos and verified uploads
 
-### 🎯 Genre-Specific Keywords
-
-| Genre | Search Strategy |
-| --- | --- |
-| **Anime** | "anime opening official", "anime songs official", "best anime op" |
-| **K-Pop** | "kpop official mv", "kpop songs 2024", "korean music official" |
-| **Lo-Fi** | "lofi hip hop music", "lofi beats official", "chill lofi music" |
-| **Electronic** | "edm music", "electronic dance music", "house music official" |
-| **Others** | Similarly optimized with "official", year markers, and quality indicators |
-
-### 🔁 Fallback Mechanism
-
-If the first search yields no suitable tracks after filtering:
-- Automatically retries with a different keyword from the genre pool
-- Ensures you always get music, never silence
-- Logs the entire process for transparency
-
 ### 💾 Local Caching Integration
 
 All autoplay tracks leverage the same local cache system as manual plays:
@@ -516,18 +504,18 @@ All autoplay tracks leverage the same local cache system as manual plays:
 Watch the autoplay engine work in real-time:
 
 ```
-🎲 Autoplay: Finding anime music...
-✅ Autoplay: Added "YOASOBI - アイドル (Idol) [Official Music Video]" (244s)
-⬇️ Pre-downloading: YOASOBI - アイドル (Idol) [Official Music Video]
-📥 Downloading: YOASOBI - アイドル (Idol) [Official Music Video]
-✅ Downloaded: YOASOBI - アイドル (Idol) [Official Music Video]
+🎲 Autoplay: Finding music similar to "YOASOBI - アイドル (Idol)"
+✅ Autoplay: Added "YOASOBI - 勇者 (Yūsha) [Official Music Video]" (244s)
+⬇️ Pre-downloading: YOASOBI - 勇者 (Yūsha) [Official Music Video]
+📥 Downloading: YOASOBI - 勇者 (Yūsha) [Official Music Video]
+✅ Downloaded: YOASOBI - 勇者 (Yūsha) [Official Music Video]
 📊 File size: 3.87 MB
-🎲 Autoplay: Now playing "YOASOBI - アイドル (Idol) [Official Music Video]"
+🎲 Autoplay: Now playing "YOASOBI - 勇者 (Yūsha) [Official Music Video]"
 ```
 
 ### 💡 Usage Tips
 
-- **Random Mode** – Can't decide? Select "Random" to get music from all genres
+- **Follows Your Taste** – Autoplay always looks at the **most recently played track**, so recommendations keep adapting as the music changes
 - **Queue Priority** – Manually added tracks always play before autoplay suggestions
 - **Toggle Anytime** – Turn autoplay on/off at any point during playback
 - **No Spam** – Only adds one track at a time as each song finishes

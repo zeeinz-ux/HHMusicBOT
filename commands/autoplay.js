@@ -5,23 +5,14 @@ const LanguageManager = require('../src/LanguageManager');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('autoplay')
-        .setDescription('Toggle autoplay - auto-play related songs when queue is empty')
+        .setDescription('Toggle autoplay - auto-play similar songs when the queue is empty')
         .addStringOption(option =>
             option.setName('mode')
                 .setDescription('Autoplay mode')
                 .setRequired(true)
                 .addChoices(
                     { name: 'Off', value: 'off' },
-                    { name: 'Related (Smart)', value: 'related' },
-                    { name: 'Genre: Pop', value: 'pop' },
-                    { name: 'Genre: Rock', value: 'rock' },
-                    { name: 'Genre: Hip Hop', value: 'hiphop' },
-                    { name: 'Genre: Electronic', value: 'electronic' },
-                    { name: 'Genre: Jazz', value: 'jazz' },
-                    { name: 'Genre: Lofi', value: 'lofi' },
-                    { name: 'Genre: K-Pop', value: 'kpop' },
-                    { name: 'Genre: Anime', value: 'anime' },
-                    { name: 'Genre: Random', value: 'random' }
+                    { name: 'On (Similar to current song)', value: 'related' }
                 )
         ),
 
@@ -64,21 +55,12 @@ module.exports = {
 
             const modeLabels = {
                 off: '❌ Off',
-                related: '🔗 Related (Smart)',
-                pop: '🎵 Pop',
-                rock: '🎸 Rock',
-                hiphop: '🎤 Hip Hop',
-                electronic: '🎧 Electronic',
-                jazz: '🎷 Jazz',
-                lofi: '☕ Lofi',
-                kpop: '🇰🇷 K-Pop',
-                anime: '🎌 Anime',
-                random: '🎲 Random'
+                related: '🔗 Similar to current song'
             };
 
             const status = player.autoplay ? `**${modeLabels[mode]}**` : 'Off';
             const description = player.autoplay
-                ? `Autoplay is now ${status}.\nWhen the queue is empty, the bot will auto-play ${mode === 'related' ? 'songs related to the last played track' : mode + ' music'}.`
+                ? `Autoplay is now ${status}.\nWhen the queue is empty, the bot will auto-play songs similar to the last played track.`
                 : 'Autoplay is now **Off**.';
 
             const embed = new EmbedBuilder()

@@ -271,11 +271,8 @@
     "changed_by": "👤 Changed by",
     "autoplay_disabled": "Autoplay Disabled",
     "autoplay_disabled_desc": "Autoplay feature has been disabled.",
-    "autoplay_select_title": "Select Genre for Autoplay",
-    "autoplay_select_desc": "What genre should play when the queue ends?",
-    "autoplay_select_genre": "Select a music genre...",
     "autoplay_enabled": "Autoplay Enabled",
-    "autoplay_enabled_desc": "Autoplay enabled for **{genre}** genre. New songs will be added automatically when the queue ends.",
+    "autoplay_related_desc": "Autoplay is now enabled. When the queue ends, the bot will automatically queue songs similar to the last played track.",
     "no_lyrics_found": "No lyrics found for this song.",
     "lyrics_unavailable": "Lyrics are unavailable for this song.",
     "lyrics_title": "Song Lyrics",
@@ -304,28 +301,6 @@
     "autoplay_on": "Autoplay: On",
     "lyrics": "Lyrics"
   },
-  "genres": {
-    "pop": "Pop",
-    "rock": "Rock",
-    "hiphop": "Hip-Hop",
-    "electronic": "Electronic",
-    "jazz": "Jazz",
-    "classical": "Classical",
-    "metal": "Metal",
-    "country": "Country",
-    "rnb": "R&B",
-    "indie": "Indie",
-    "latin": "Latin",
-    "kpop": "K-Pop",
-    "anime": "Anime",
-    "lofi": "Lo-Fi",
-    "blues": "Blues",
-    "reggae": "Reggae",
-    "disco": "Disco",
-    "punk": "Punk",
-    "ambient": "Ambient",
-    "random": "Random"
-  },
   "permissions": {
     "music_control_title": "🎛️ Control Permissions",
     "music_control_requirement": "To manage music, you must be the person who started it, or have Manage Server permission, or have a role named DJ."
@@ -343,4 +318,4 @@
     "voice_no_permission": "❌ **Missing voice channel permissions**\nThe bot doesn't have permission to join or speak in your voice channel.\n\n**Fix:** Go to your voice channel settings → Permissions → give the bot **Connect** and **Speak** permissions.",
     "unknown": "❌ **An unexpected error occurred**\nSomething went wrong while processing your request.\n\n**Fix:** Try again in a moment. If the issue continues, check the bot console for the full error log."
   }
-}
+}
