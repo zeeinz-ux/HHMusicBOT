@@ -458,7 +458,7 @@ HHMusic features an intelligent autoplay engine that keeps the music flowing whe
 
 1. **Enable Autoplay** – Click the 🎲 Autoplay button on the now-playing embed, or use `/autoplay`
 2. **Play What You Like** – Just queue songs as usual. No genre to pick — autoplay figures out your vibe automatically
-3. **Sit Back & Enjoy** – When your queue ends, the bot searches for and queues tracks similar to the last played song
+3. **Sit Back & Enjoy** – When your queue ends, the bot plays a similar track immediately and refills your queue with up to ~50 autoplay suggestions in the background
 
 ### 🧠 How It Finds Similar Music
 
@@ -518,7 +518,7 @@ Watch the autoplay engine work in real-time:
 - **Follows Your Taste** – Autoplay always looks at the **most recently played track**, so recommendations keep adapting as the music changes
 - **Queue Priority** – Manually added tracks always play before autoplay suggestions
 - **Toggle Anytime** – Turn autoplay on/off at any point during playback
-- **No Spam** – Only adds one track at a time as each song finishes
+- **No Spam** – Autoplay suggestions are deduped against the current queue and playback history, so the same video won't be re-queued
 
 ---
 
