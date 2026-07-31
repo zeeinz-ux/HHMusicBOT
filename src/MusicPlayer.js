@@ -1791,6 +1791,9 @@ class MusicPlayer {
             await this.fadeOut();
 
             this.previousTracks.push(finishedTrack);
+            if (this.previousTracks.length > 50) {
+                this.previousTracks.splice(0, this.previousTracks.length - 50);
+            }
 
             // Clean up downloaded file for finished track (unless looping track)
             if (this.loop !== 'track' && this.currentDownloadedFile) {
@@ -1849,8 +1852,8 @@ class MusicPlayer {
 
             if (this.autoplay) {
                 this.currentTrackRetries = 0;
-                await this.handleAutoplay();
-                return;
+                const started = await this.handleAutoplay();
+                if (started) return;
             }
 
             this.currentTrack = null;
@@ -1887,35 +1890,78 @@ class MusicPlayer {
     }
 
     async handleAutoplay() {
-        if (!this.autoplay) return;
+        if (!this.autoplay) return false;
 
-        const YouTube = require('./YouTube');
-        let tracks = [];
+        this.currentTrack = null;
 
-        // Strategy 1: Get related videos from the last played track (smartest)
-        const lastTrack = this.previousTracks[this.previousTracks.length - 1];
-        const lastUrl = lastTrack?.youtubeUrl || lastTrack?.url;
-        if (lastUrl && YouTube.isYouTubeURL(lastUrl)) {
-            try {
-                tracks = await YouTube.getRelated(lastUrl, this.guild.id);
-            } catch (e) { /* fallback to search */ }
+        try {
+            const YouTube = require('./YouTube');
+
+            const lastTrack = this.previousTracks[this.previousTracks.length - 1];
+            const lastUrl = lastTrack?.youtubeUrl || lastTrack?.url;
+
+            // Strategy 1: Get related videos from the last played track (smartest)
+            let tracks = [];
+            if (lastUrl && YouTube.isYouTubeURL(lastUrl)) {
+                try {
+                    tracks = await YouTube.getRelated(lastUrl, this.guild.id);
+                } catch (e) { /* fallback to search */ }
+            }
+
+            // Strategy 2: Search by the last track's artist if related failed
+            if (tracks.length === 0) {
+                const artist = lastTrack?.artist;
+                const currentYear = new Date().getFullYear();
+                const keywords = (artist && artist !== 'Unknown Artist')
+                    ? [`${artist} official music`, `${artist} songs`, `${artist} music`]
+                    : ['music official video', `top songs ${currentYear}`, 'best music'];
+                const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
+                const results = await YouTube.search(randomKeyword, 15, this.guild.id);
+                tracks = results || [];
+            }
+
+            const filteredTracks = this.filterAutoplayTracks(tracks);
+            if (filteredTracks.length === 0) {
+                console.warn('⚠️ Autoplay: no candidates found, ending playback');
+                return false;
+            }
+
+            // Pick random from filtered results
+            const randomTrack = filteredTracks[Math.floor(Math.random() * filteredTracks.length)];
+            this.prepareAutoplayTrack(randomTrack);
+
+            this.queue.push(randomTrack);
+            this.currentTrack = this.queue.shift();
+
+            this.refillAutoplayQueue().catch(err => {
+                console.warn(`⚠️ Autoplay queue refill failed: ${err?.message || err}`);
+            });
+
+            const result = await this.play(null, 0);
+
+            const MusicEmbedManager = require('./MusicEmbedManager');
+            if (global.clients && global.clients.musicEmbedManager) {
+                await global.clients.musicEmbedManager.updateNowPlayingEmbed(this);
+            }
+
+            return Boolean(result && result.success);
+        } catch (error) {
+            console.error('❌ Autoplay failed:', error?.message || error);
+            return false;
         }
+    }
 
-        // Strategy 2: Search by the last track's artist if related failed
-        if (tracks.length === 0) {
-            const artist = lastTrack?.artist;
-            const currentYear = new Date().getFullYear();
-            const keywords = (artist && artist !== 'Unknown Artist')
-                ? [`${artist} official music`, `${artist} songs`, `${artist} music`]
-                : ['music official video', `top songs ${currentYear}`, 'best music'];
-            const randomKeyword = keywords[Math.floor(Math.random() * keywords.length)];
-            const results = await YouTube.search(randomKeyword, 15, this.guild.id);
-            tracks = results || [];
-        }
+    prepareAutoplayTrack(track) {
+        track.requestedBy = this.guild?.members?.me?.user;
+        track.addedAt = Date.now();
+        return track;
+    }
 
-        // Filter non-music content
-        const filteredTracks = tracks.filter(track => {
-            if (!track.duration || track.duration < 30 || track.duration > 600) return false;
+    filterAutoplayTracks(tracks) {
+        if (!Array.isArray(tracks)) return [];
+
+        return tracks.filter(track => {
+            if (!track || !track.url || !track.duration || track.duration < 30 || track.duration > 600) return false;
             const title = (track.title || '').toLowerCase();
             const blocked = ['tutorial', 'lesson', 'podcast', 'interview', 'lecture',
                 'review', 'gameplay', 'full movie', 'full album', 'documentary',
@@ -1923,23 +1969,50 @@ class MusicPlayer {
             if (blocked.some(k => title.includes(k))) return false;
             return true;
         });
+    }
 
-        if (filteredTracks.length === 0) return;
+    async refillAutoplayQueue(maxTracks = 50) {
+        if (!this.autoplay) return;
 
-        // Pick random from filtered results
-        const randomTrack = filteredTracks[Math.floor(Math.random() * filteredTracks.length)];
-        randomTrack.requestedBy = this.guild.members.me.user;
-        randomTrack.addedAt = Date.now();
+        const YouTube = require('./YouTube');
+        const lastTrack = this.previousTracks[this.previousTracks.length - 1];
+        const currentYear = new Date().getFullYear();
+        const artist = lastTrack?.artist;
 
-        this.queue.push(randomTrack);
-        this.preloadTrack(randomTrack).catch(() => {});
+        const queries = (artist && artist !== 'Unknown Artist')
+            ? [`${artist} official music`, `${artist} songs`, `${artist} music`,
+                `top songs ${currentYear}`, 'trending songs']
+            : ['music official video', `top songs ${currentYear}`, 'best music',
+                `new music ${currentYear}`, 'trending songs'];
 
-        this.currentTrack = this.queue.shift();
-        await this.play(null, 0);
+        const seen = new Set();
+        const currentUrl = this.currentTrack?.url;
+        if (currentUrl) seen.add(currentUrl);
+        this.queue.forEach(track => { if (track.url) seen.add(track.url); });
+        this.previousTracks.forEach(track => { if (track.url) seen.add(track.url); });
 
-        const MusicEmbedManager = require('./MusicEmbedManager');
-        if (global.clients && global.clients.musicEmbedManager) {
-            await global.clients.musicEmbedManager.updateNowPlayingEmbed(this);
+        const results = await Promise.allSettled(queries.map(q => YouTube.search(q, 15, this.guild.id)));
+        const candidates = [];
+        for (const res of results) {
+            if (res.status !== 'fulfilled' || !Array.isArray(res.value)) continue;
+            for (const track of res.value) {
+                if (!track || !track.url || seen.has(track.url)) continue;
+                seen.add(track.url);
+                candidates.push(track);
+            }
+        }
+
+        const filtered = this.filterAutoplayTracks(candidates);
+        filtered.sort(() => Math.random() - 0.5);
+
+        for (const track of filtered) {
+            if (this.queue.length >= maxTracks) break;
+            this.prepareAutoplayTrack(track);
+            this.queue.push(track);
+        }
+
+        if (this.queue.length > 0) {
+            this.preloadTrack(this.queue[0]).catch(() => {});
         }
     }
 
