@@ -1335,12 +1335,38 @@ class MusicPlayer {
 
         const status = this.audioPlayer.state?.status;
 
+        // Stall watchdog: if a stream dies mid-play (yt-dlp pipe cut after the
+        // first 5s), the audioPlayer stays stuck in Playing/Buffering forever —
+        // playbackDuration never reaches the track duration, so the normal path
+        // below would just keep rescheduling and the queue would never advance.
+        // Compare pure wall-clock elapsed against the duration: if the track has
+        // "been playing" longer than its duration (+ buffer), the stream is dead.
+        // Force-stop so handleTrackEnd advances the queue. Safe for cached-file
+        // playback too (a finished .opus file reaches Idle naturally before this
+        // fires — it's only a backstop).
+        if (status === AudioPlayerStatus.Playing || status === AudioPlayerStatus.Buffering) {
+            const durationMs = (Number(this.currentTrack.duration) || 0) * 1000;
+            const wallElapsedMs = this.currentTrackStartOffsetMs +
+                (this.startTime ? Date.now() - this.startTime + (this.pausedTime || 0) : 0);
+            if (durationMs > 0 && wallElapsedMs >= durationMs + 10000) {
+                console.error(`[Playback] ⚠️ Stream stalled (wall-clock ${(wallElapsedMs/1000).toFixed(0)}s ≥ ${(durationMs/1000).toFixed(0)}s duration) — stopping to advance queue: "${this.currentTrack.title}"`);
+                if (!this.pendingEndReason) {
+                    this.pendingEndReason = 'watchdog';
+                }
+                this.audioPlayer.stop();
+                this.trackTimer = null;
+                return;
+            }
+        }
+
         if (status === AudioPlayerStatus.Playing) {
             const playbackMs = this.resource?.playbackDuration || 0;
             const durationMs = (Number(this.currentTrack.duration) || 0) * 1000;
 
             if (durationMs > 0 && playbackMs + 1500 < durationMs) {
-                const remainingMs = Math.max(durationMs - playbackMs, 2000);
+                // Cap the interval so the wall-clock stall check above runs at least
+                // every ~10s even when playbackDuration is frozen (dead stream mid-play).
+                const remainingMs = Math.min(Math.max(durationMs - playbackMs, 2000), 10000);
                 this.trackTimer = setTimeout(() => this.ensureTrackCompletion(), remainingMs);
                 return;
             }
