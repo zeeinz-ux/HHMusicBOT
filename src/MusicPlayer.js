@@ -841,6 +841,7 @@ class MusicPlayer {
             this.currentTrackStartOffsetMs = resumeFromMs;
             this.lastPlaybackPosition = resumeFromMs;
             this.pausedTime = 0;
+            this.paused = false;
             this.startTime = null; // Will be set when Playing event fires
 
             // Get audio stream - check preloaded first!
@@ -1658,13 +1659,18 @@ class MusicPlayer {
     }
 
     pauseFor(reason = null) {
-        if (reason) {
-            this.pauseReasons.add(reason);
-            this.scheduleStatePersist('pause-update', 200);
-        }
-
+        // GH#fix: only record the reason when the pause actually takes effect.
+        // The old code added `reason` to pauseReasons BEFORE checking the player
+        // state, so a pause click while the player was Buffering/transitioning
+        // added a phantom 'manual' entry even though audioPlayer.pause() failed.
+        // That stale reason then auto-paused EVERY subsequent track (silent) and
+        // froze the progress bar (startProgressUpdate skips when paused).
         const status = this.audioPlayer.state.status;
         if (status === AudioPlayerStatus.Paused) {
+            if (reason) {
+                this.pauseReasons.add(reason);
+                this.scheduleStatePersist('pause-update', 200);
+            }
             this.paused = true;
             this.scheduleStatePersist('pause', 0);
             return true;
@@ -1673,6 +1679,10 @@ class MusicPlayer {
         if (status === AudioPlayerStatus.Playing) {
             const paused = this.audioPlayer.pause();
             if (paused) {
+                if (reason) {
+                    this.pauseReasons.add(reason);
+                    this.scheduleStatePersist('pause-update', 200);
+                }
                 this.paused = true;
                 this.scheduleStatePersist('pause', 0);
                 return true;
@@ -2051,6 +2061,14 @@ class MusicPlayer {
             const durationMs = finishedTrack && Number(finishedTrack.duration) > 0 ? Number(finishedTrack.duration) * 1000 : 0;
             const manualSkip = reason === 'skip' || reason === 'stop';
             const endedUnexpectedly = Boolean(finishedTrack) && !manualSkip && durationMs > 0 && totalPlaybackMs + 1500 < durationMs;
+
+            // GH#fix: clear transient pause reasons ('manual' pause / 'alone'
+            // inactivity) so a stalled-track retry or the next queued track never
+            // auto-pauses from a stale entry (silent playback + frozen 0:00 bar).
+            // 'mute' is deliberately KEPT — the user explicitly muted and expects
+            // silence to persist across tracks.
+            this.pauseReasons.delete('manual');
+            this.pauseReasons.delete('alone');
 
             if (endedUnexpectedly) {
                 this.currentTrackRetries += 1;
