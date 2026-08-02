@@ -1059,26 +1059,37 @@ class MusicPlayer {
                     const silentTrackUrl = this.currentTrack?.url;
                     setTimeout(() => {
                         try {
-                            if (bytesReceived === 0) {
-                                console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack?.title}"`);
-                                // Recovery: a silent stream would leave the track stuck at
-                                // 0:00 forever. Stop the dead resource so the endedUnexpectedly
-                                // retry path in handleTrackEnd re-resolves a fresh stream and
-                                // picks up the background-downloaded cache file (if ready).
-                                if (this.currentTrack?.url === silentTrackUrl &&
-                                    !this.isTransitioning &&
-                                    this.audioPlayer &&
-                                    (this.audioPlayer.state?.status === AudioPlayerStatus.Playing ||
-                                     this.audioPlayer.state?.status === AudioPlayerStatus.Buffering)) {
-                                    console.error(`[Playback] ⚠️  Silent stream detected — restarting track to recover (${this.currentTrack.title})`);
-                                    try {
-                                        this.pendingEndReason = 'watchdog';
-                                        this.audioPlayer.stop();
-                                    } catch (stopErr) {
-                                        console.warn(`[Playback] Silent-stream stop failed (non-fatal): ${stopErr.message}`);
+                                if (bytesReceived === 0) {
+                                    console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack?.title}"`);
+                                    // Recovery: a silent stream would leave the track stuck at
+                                    // 0:00 forever. Stop the dead resource so the endedUnexpectedly
+                                    // retry path in handleTrackEnd re-resolves a fresh stream and
+                                    // picks up the background-downloaded cache file (if ready).
+                                    //
+                                    // GH#fix: `playingFromFile` is the real protection against
+                                    // killing a mid-play cached-file swap — after switchToDownloadedFile
+                                    // replaces the resource, the old provider stream stops flowing
+                                    // (bytesReceived stays 0) while the player is happily Playing from
+                                    // the .opus file. The old status-only guard (Playing/Buffering)
+                                    // does NOT catch that case. Also log the guard decision so a
+                                    // blocked recovery is diagnosable from Railway logs.
+                                    const sameTrack = this.currentTrack?.url === silentTrackUrl;
+                                    const isSwitchedToFile = this.playingFromFile === true;
+                                    const currentStatus = this.audioPlayer?.state?.status;
+                                    if (sameTrack && !this.isTransitioning && this.audioPlayer &&
+                                        !isSwitchedToFile &&
+                                        (currentStatus === AudioPlayerStatus.Playing || currentStatus === AudioPlayerStatus.Buffering)) {
+                                        console.error(`[Playback] ⚠️  Silent stream detected — restarting track to recover (${this.currentTrack.title})`);
+                                        try {
+                                            this.pendingEndReason = 'watchdog';
+                                            this.audioPlayer.stop();
+                                        } catch (stopErr) {
+                                            console.warn(`[Playback] Silent-stream stop failed (non-fatal): ${stopErr.message}`);
+                                        }
+                                    } else if (sameTrack) {
+                                        console.warn(`[Playback] Silent stream NOT restarted — guard blocked: status=${currentStatus}, isTransitioning=${this.isTransitioning}, playingFromFile=${isSwitchedToFile}`);
                                     }
-                                }
-                            } else {
+                                } else {
                                 console.log(`[Playback] ✅ Stream producing data: ${(bytesReceived / 1024).toFixed(1)}KB received in first 5s`);
                             }
                             // off()/removeListener() — only call if audioStream is still
