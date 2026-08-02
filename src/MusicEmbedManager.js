@@ -305,6 +305,17 @@ class MusicEmbedManager {
     }
 
     /**
+     * DiscordAPIError 10003 (Unknown Channel) / 10008 (Unknown Message) mean the
+     * target message/channel no longer exists (deleted channel, bot removed).
+     * Editing/updating it is pointless — treat as no-op instead of logging a
+     * full-stack error (which previously fired every 10s via the progress interval).
+     */
+    _isMessageGoneError(error) {
+        if (!error) return false;
+        return error.code === 10003 || error.code === 10008 || error.status === 404;
+    }
+
+    /**
      * Mevcut müzik embed'ini günceller
      */
     async updateNowPlayingEmbed(player) {
@@ -319,6 +330,7 @@ class MusicEmbedManager {
                 components: buttons
             });
         } catch (error) {
+            if (this._isMessageGoneError(error)) return;
             console.error('Error updating now playing embed:', error);
         }
     }
@@ -352,6 +364,7 @@ class MusicEmbedManager {
                     components: disabledButtons
                 });
             } catch (error) {
+                if (this._isMessageGoneError(error)) return;
                 console.error('Error disabling buttons:', error);
             }
         }

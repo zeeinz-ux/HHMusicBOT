@@ -156,6 +156,8 @@ class MusicPlayer {
 
         // Playback lifecycle state
         this.trackTimer = null;
+        this._decodedWatchTimer = null;
+        this._decodedWatchResource = null;
         this.isTransitioning = false;
         this.pendingEndReason = null;
         this.currentTrackRetries = 0;
@@ -1187,7 +1189,7 @@ class MusicPlayer {
                         command: ffmpegPath,
                         args: [
                             ...seekArgs,
-                            '-analyzeduration', '1M',
+                            '-analyzeduration', '0',
                             '-loglevel', 'warning',
                             '-i', 'pipe:0',
                             ...filterArgs,
@@ -1267,6 +1269,7 @@ class MusicPlayer {
                         }
                     });
                     this.playingFromFile = false;
+                    this._startDecodedAudioWatchdog(ffmpegProcess, 'stream');
                 }
             }
             
@@ -1322,6 +1325,7 @@ class MusicPlayer {
                         bitrate: (streamInfo && streamInfo.bitrate) || 128
                     }
                 });
+                this._startDecodedAudioWatchdog(ffmpegProcess, 'file');
             }
 
             // Ensure we have a resource
@@ -1527,6 +1531,7 @@ class MusicPlayer {
             if (this.resource.volume) {
                 this.resource.volume.setVolume(this.volume / 100);
             }
+            this._startDecodedAudioWatchdog(ffmpegProcess, 'cache-swap');
 
             // Repoint the position math so wall-clock/watchdog stay consistent:
             // the new resource's playbackDuration restarts at 0 from the seek point.
@@ -1555,6 +1560,45 @@ class MusicPlayer {
             console.warn(`⚠️ Cache switch failed (non-fatal): ${err?.message}`);
             return false;
         }
+    }
+
+    // GH#silent-decode: the 5s "no data from stream" watchdog counts bytes from
+    // the PROVIDER source (yt-dlp stdout). A format that delivers bytes but fails
+    // to DECODE (combined/DASH container, fragmented MP4, bad cached .opus) makes
+    // ffmpeg emit no PCM at all -> Playing with silence, no error, no log. This
+    // watchdog counts DECODED PCM bytes on ffmpeg's stdout across all three
+    // resource paths (stream, file, cache-swap). If a Playing track gets zero
+    // decoded bytes within 6s it force-stops (pendingEndReason='watchdog') so the
+    // endedUnexpectedly retry re-resolves fresh and/or picks up the downloaded
+    // cache file. The token check (_decodedWatchResource) keeps a stale timer
+    // from killing a newer resource after a switchToDownloadedFile swap.
+    _startDecodedAudioWatchdog(ffmpegProcess, label) {
+        if (!ffmpegProcess || !ffmpegProcess.process || !ffmpegProcess.process.stdout) return;
+        let pcmBytes = 0;
+        const stdout = ffmpegProcess.process.stdout;
+        const onData = chunk => { pcmBytes += chunk.length; };
+        stdout.on('data', onData);
+        if (this._decodedWatchTimer) {
+            clearTimeout(this._decodedWatchTimer);
+            this._decodedWatchTimer = null;
+        }
+        this._decodedWatchResource = ffmpegProcess;
+        this._decodedWatchTimer = setTimeout(() => {
+            this._decodedWatchTimer = null;
+            stdout.removeListener('data', onData);
+            if (this._decodedWatchResource !== ffmpegProcess) return;
+            if (pcmBytes > 0) return;
+            const status = this.audioPlayer?.state?.status;
+            if (status !== AudioPlayerStatus.Playing && status !== AudioPlayerStatus.Buffering) return;
+            if (this.isTransitioning || this.skipRequested || this.stopRequested) return;
+            console.error(`[Playback] ❌ No decoded audio from FFmpeg in 6s (${label}) for "${this.currentTrack?.title}" — restarting to recover`);
+            try {
+                this.pendingEndReason = 'watchdog';
+                this.audioPlayer.stop();
+            } catch (stopErr) {
+                console.warn(`[Playback] Decoded-audio watchdog stop failed (non-fatal): ${stopErr.message}`);
+            }
+        }, 6000).unref?.();
     }
 
     scheduleTrackWatchdog(streamInfo = null) {
