@@ -962,10 +962,28 @@ class MusicPlayer {
                     let bytesReceived = 0;
                     const dataListener = chunk => { bytesReceived += chunk.length; };
                     audioStream.on('data', dataListener);
+                    const silentTrackUrl = this.currentTrack?.url;
                     setTimeout(() => {
                         try {
                             if (bytesReceived === 0) {
-                                console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack.title}"`);
+                                console.error(`[Playback] ⚠️  No data received from stream in 5s — track may be silent: "${this.currentTrack?.title}"`);
+                                // Recovery: a silent stream would leave the track stuck at
+                                // 0:00 forever. Stop the dead resource so the endedUnexpectedly
+                                // retry path in handleTrackEnd re-resolves a fresh stream and
+                                // picks up the background-downloaded cache file (if ready).
+                                if (this.currentTrack?.url === silentTrackUrl &&
+                                    !this.isTransitioning &&
+                                    this.audioPlayer &&
+                                    (this.audioPlayer.state?.status === AudioPlayerStatus.Playing ||
+                                     this.audioPlayer.state?.status === AudioPlayerStatus.Buffering)) {
+                                    console.error(`[Playback] ⚠️  Silent stream detected — restarting track to recover (${this.currentTrack.title})`);
+                                    try {
+                                        this.pendingEndReason = 'watchdog';
+                                        this.audioPlayer.stop();
+                                    } catch (stopErr) {
+                                        console.warn(`[Playback] Silent-stream stop failed (non-fatal): ${stopErr.message}`);
+                                    }
+                                }
                             } else {
                                 console.log(`[Playback] ✅ Stream producing data: ${(bytesReceived / 1024).toFixed(1)}KB received in first 5s`);
                             }
