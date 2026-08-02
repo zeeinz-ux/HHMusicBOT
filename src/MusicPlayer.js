@@ -135,6 +135,7 @@ class MusicPlayer {
         this.currentDownloadedFile = null; // Path to currently playing downloaded file
         this.downloadedFiles = new Set(); // Track all downloaded files for cleanup
         this.downloadingFiles = new Set(); // Track files currently being downloaded to prevent duplicates
+        this.playingFromFile = false; // True while playback source is a cached file (not a provider stream)
 
         // Events setup
         this.setupEvents();
@@ -903,6 +904,12 @@ class MusicPlayer {
                         .then(file => {
                             if (this.currentTrack && this.currentTrack.url === trackToDownload.url) {
                                 this.currentDownloadedFile = file;
+                                // Prefer the stable cached file over the fragile provider
+                                // stream as soon as it's ready — kills the mid-play stall
+                                // window. Non-fatal if the swap is refused (e.g. paused).
+                                this.switchToDownloadedFile(file).catch(err => {
+                                    console.warn(`⚠️ Cache switch failed (non-fatal): ${err?.message}`);
+                                });
                             }
                         })
                         .catch(err => {
@@ -1120,12 +1127,14 @@ class MusicPlayer {
                             bitrate: streamInfo.bitrate || 128
                         }
                     });
+                    this.playingFromFile = false;
                 }
             }
             
             // File playback mode (either pre-downloaded or fallback from streaming)
             if (!shouldDownload && downloadedFile) {
                 console.log(`🎵 Playing from cached file: ${path.basename(downloadedFile)} (seek: ${resumeFromMs}ms)`);
+                this.playingFromFile = true;
                 
                 const seekArgs = resumeFromMs > 0 
                     ? ['-ss', (resumeFromMs / 1000).toFixed(3)] 
@@ -1257,6 +1266,112 @@ class MusicPlayer {
             return { success: false, message: errorMsg };
         } finally {
             this._playLock = false;
+        }
+    }
+
+    // Seamlessly switch live playback from a (fragile) provider stream to a
+    // freshly-downloaded cached file, continuing from the current position.
+    // This eliminates the mid-play stall window entirely: the provider stream is
+    // only relied on for the first ~10s while the background download finishes.
+    async switchToDownloadedFile(file) {
+        try {
+            // Guard: only swap while the same track is actively streaming
+            if (!this.currentTrack) return false;
+            if (this.isTransitioning) return false;
+            if (this.paused || this.pauseReasons.size > 0) return false;
+            if (this.skipRequested || this.stopRequested) return false;
+            if (this.playingFromFile) return false; // already playing from a file
+            if (this._playLock) return false;
+
+            const status = this.audioPlayer.state?.status;
+            if (status !== AudioPlayerStatus.Playing && status !== AudioPlayerStatus.Buffering) return false;
+
+            if (!file || !fsSync.existsSync(file)) return false;
+
+            // Don't swap if we're already past the end of the track
+            const positionMs = Math.floor(this.getCurrentTime() || 0);
+            const durationMs = (Number(this.currentTrack.duration) || 0) * 1000;
+            if (durationMs > 0 && positionMs + 3000 >= durationMs) return false;
+
+            console.log(`[Playback] 🎯 Switching to cached file mid-play (seek: ${positionMs}ms): ${path.basename(file)}`);
+
+            const seekArgs = positionMs > 0 ? ['-ss', (positionMs / 1000).toFixed(3)] : [];
+
+            if (!ffmpegPath) {
+                console.error(`[Playback] ffmpeg-static path is NULL`);
+                return false;
+            } else if (typeof ffmpegPath === 'string' && !fsSync.existsSync(ffmpegPath)) {
+                console.error(`[Playback] ffmpeg-static path does not exist: ${ffmpegPath}`);
+                return false;
+            }
+
+            const ffmpegProcess = new prism.FFmpeg({
+                command: ffmpegPath,
+                args: [
+                    ...seekArgs,
+                    '-i', file,
+                    '-analyzeduration', '0',
+                    '-loglevel', 'warning',
+                    ...this._buildFilterArgs(),
+                    '-b:a', `${this.audioQuality || 128}k`,
+                    '-f', 's16le',
+                    '-ar', '48000',
+                    '-ac', '2'
+                ]
+            });
+
+            let ffmpegStderr = '';
+            ffmpegProcess.on('error', (err) => {
+                if (err.message && err.message.includes('Premature close')) return;
+                console.error('❌ FFmpeg playback error:', err.message);
+                console.error('   stderr:', ffmpegStderr.slice(-500) || '(none)');
+            });
+            if (ffmpegProcess.process && ffmpegProcess.process.stderr) {
+                ffmpegProcess.process.stderr.on('data', d => {
+                    ffmpegStderr += d.toString();
+                });
+            }
+
+            this.resource = createAudioResource(ffmpegProcess, {
+                inputType: StreamType.Raw,
+                inlineVolume: false,
+                metadata: {
+                    title: this.currentTrack.title,
+                    url: this.currentTrack.url,
+                    duration: this.currentTrack.duration,
+                    bitrate: this.audioQuality || 128
+                }
+            });
+            if (this.resource.volume) {
+                this.resource.volume.setVolume(this.volume / 100);
+            }
+
+            // Repoint the position math so wall-clock/watchdog stay consistent:
+            // the new resource's playbackDuration restarts at 0 from the seek point.
+            this.currentTrackStartOffsetMs = positionMs;
+            this.lastPlaybackPosition = positionMs;
+            this.pausedTime = 0;
+            this.startTime = Date.now();
+
+            this.currentDownloadedFile = file;
+            this.playingFromFile = true;
+
+            // Swapping resources mid-play does NOT emit Idle (discord.js destroys
+            // the old stream and goes straight to Buffering/Playing) — same safe
+            // path that seek() already relies on.
+            this.audioPlayer.play(this.resource);
+            this.scheduleTrackWatchdog(null);
+
+            const embedMgr = global.clients?.musicEmbedManager || this.guild?.client?.musicEmbedManager;
+            if (embedMgr && typeof embedMgr.startProgressUpdate === 'function') {
+                embedMgr.startProgressUpdate(this);
+            }
+
+            this.scheduleStatePersist('switch-to-cache', 200);
+            return true;
+        } catch (err) {
+            console.warn(`⚠️ Cache switch failed (non-fatal): ${err?.message}`);
+            return false;
         }
     }
 
