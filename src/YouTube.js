@@ -302,11 +302,22 @@ class YouTube {
             // Different YouTube player clients return different format lists and the
             // first one that produces audio bytes wins. With cookies, the default
             // (mweb) usually works; if not, fall back to android then tv.
-            const formatCandidates = ['ba/b', 'bestaudio', 'worstaudio', 'worst'];
+            // Note: plain `worst` can resolve to a VIDEO-ONLY format (e.g. format 160,
+            // 144p, acodec=none). Data flows but there's no audio track → silent
+            // playback. So the last resort must be `worst[acodec!=none]` — the worst
+            // format that still carries audio (combined formats always do).
+            const formatCandidates = ['ba/b', 'bestaudio', 'worstaudio', 'worst[acodec!=none]'];
             const clientFallbacks = [
                 { label: 'default' },                              // whatever getYtDlpOptions picked
                 { label: 'android', extractorArgs: 'youtube:player_client=android' },
                 { label: 'tv,mweb', extractorArgs: 'youtube:player_client=tv,mweb' },
+                // The `web` client + PO token is the most reliable combo for bots on
+                // restricted videos (e.g. lyric videos where audio-only formats 403 on
+                // mweb/android/tv). PO_TOKEN is configured but normally unused because
+                // cookies take priority in getYtDlpOptions — so try it here as a fallback.
+                ...(config.ytdl.poToken
+                    ? [{ label: 'web+poToken', extractorArgs: `youtube:po_token=web+${config.ytdl.poToken};player_client=web` }]
+                    : []),
             ];
 
             let stream = null;
