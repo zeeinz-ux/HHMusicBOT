@@ -66,6 +66,32 @@ function releaseDownloadSlot() {
     }
 }
 
+// ---- Concurrent-preload cap ----
+// preloadTrack() resolves a real yt-dlp stream (getStream) for EVERY queued
+// track. addTracks fires preloadTrack for the whole queue at once, so without a
+// cap N yt-dlp spawns run simultaneously — hammering YouTube (rate-limits →
+// "No playable format found") and holding N idle stale pipes. Process-wide.
+const MAX_CONCURRENT_PRELOADS = 3;
+let activePreloadCount = 0;
+const preloadWaiters = [];
+
+function waitForPreloadSlot() {
+    if (activePreloadCount < MAX_CONCURRENT_PRELOADS) {
+        activePreloadCount++;
+        return Promise.resolve();
+    }
+    return new Promise(resolve => preloadWaiters.push(resolve));
+}
+
+function releasePreloadSlot() {
+    activePreloadCount--;
+    const next = preloadWaiters.shift();
+    if (next) {
+        activePreloadCount++;
+        next();
+    }
+}
+
 let cachedFetch;
 async function ensureFetch() {
     if (cachedFetch) return cachedFetch;
@@ -897,9 +923,24 @@ class MusicPlayer {
                 ? this.preloadedStreams.get(this.currentTrack.url)
                 : null;
             if (!streamInfo && preloaded) {
-                streamInfo = preloaded.info;
-                // Remove from cache since we're using it
-                this.preloadedStreams.delete(this.currentTrack.url);
+                // GH#fix: addTracks fires preloadTrack for the ENTIRE queue, and
+                // preloadTrack resolves a real yt-dlp pipe (YouTube.getStream) for
+                // every track. By the time a deep-queue track actually starts, that
+                // pipe has sat unread for minutes and delivers 0 bytes → a silent
+                // track stuck at 0:00 (signature: "Using provider stream" + "Playing"
+                // with NO [YouTube.getStream] logs right before, then "No data
+                // received from stream in 5s"). Discard preloads older than 60s and
+                // resolve a FRESH stream instead — the healthy path is fresh stream
+                // + mid-play switch to the downloaded cache file.
+                const preloadedAgeMs = Date.now() - (preloaded.at || 0);
+                if (preloadedAgeMs > 60000) {
+                    this.preloadedStreams.delete(this.currentTrack.url);
+                    console.warn(`[Playback] Discarded stale preloaded stream for "${this.currentTrack.title}" (${Math.round(preloadedAgeMs / 1000)}s old) — resolving fresh`);
+                } else {
+                    streamInfo = preloaded.info;
+                    // Remove from cache since we're using it
+                    this.preloadedStreams.delete(this.currentTrack.url);
+                }
             }
 
             if (!downloadedFile && !streamInfo) {
@@ -2483,6 +2524,11 @@ class MusicPlayer {
 
         this.preloadingQueue.push(track.url);
 
+        // GH#fix: cap concurrent preloads (addTracks fires this for the whole
+        // queue at once) so we don't spawn N simultaneous yt-dlp processes that
+        // rate-limit YouTube and leave N idle stale pipes behind.
+        await waitForPreloadSlot();
+
         try {
             let streamUrl = track.url;
             let streamInfo;
@@ -2533,7 +2579,8 @@ class MusicPlayer {
                 this.preloadedStreams.set(track.url, {
                     info: streamInfo,
                     track: track,
-                    downloaded: !isLowMemory
+                    downloaded: !isLowMemory,
+                    at: Date.now() // GH#fix: staleness stamp — play() discards preloads older than 60s
                 });
             }
         } catch (error) {
@@ -2544,6 +2591,7 @@ class MusicPlayer {
             // Remove from preloading queue
             const index = this.preloadingQueue.indexOf(track.url);
             if (index > -1) this.preloadingQueue.splice(index, 1);
+            releasePreloadSlot();
         }
     }
 
