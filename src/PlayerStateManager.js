@@ -116,14 +116,10 @@ class PlayerStateManager {
             const state = states[guildId];
             if (!state) continue;
 
-            if (Array.isArray(state.downloadedFiles)) {
-                for (const filepath of state.downloadedFiles) {
-                    if (filepath) {
-                        protectedFiles.add(path.resolve(filepath));
-                    }
-                }
-            }
-
+            // Only the actively-playing file must survive cleanup. Preloaded-but-idle
+            // files (e.g. the whole queue preloaded via sequentialPreload) can be
+            // re-downloaded on demand, so protecting them lets the cache grow
+            // unbounded over a long session and fills the volume (Errno 28).
             if (state.currentDownloadedFile) {
                 protectedFiles.add(path.resolve(state.currentDownloadedFile));
             }

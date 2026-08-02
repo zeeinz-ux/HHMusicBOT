@@ -118,7 +118,7 @@ require("./src/commandLoader"); // Load and deploy commands
 async function cleanupAudioCache() {
     const stateDir = process.env.STATE_DIR || __dirname;
     const cacheDir = path.join(stateDir, 'audio_cache');
-    const MAX_CACHE_MB = 80;
+    const MAX_CACHE_MB = parseInt(process.env.MAX_CACHE_MB, 10) || 80;
 
     try {
         if (fs.existsSync(cacheDir)) {
@@ -178,6 +178,18 @@ async function cleanupAudioCache() {
         console.error(chalk.red('❌ Failed to cleanup audio cache:'), error.message);
     }
 }
+
+// Periodic cache cleanup — startup-only cleanup is NOT enough. During a long
+// session every preloaded/downloaded track stays on disk, and once the Railway
+// volume fills up (Errno 28) all further downloads fail ("only the first song
+// loads"). Trim back to MAX_CACHE_MB on a timer so the volume never fills.
+// Interval in minutes, default 15.
+const CACHE_CLEANUP_INTERVAL_MS = (parseInt(process.env.CACHE_CLEANUP_INTERVAL_MIN, 10) || 15) * 60 * 1000;
+setInterval(() => {
+    cleanupAudioCache().catch(err => {
+        console.error(chalk.red('❌ Periodic cache cleanup failed:'), err.message);
+    });
+}, CACHE_CLEANUP_INTERVAL_MS).unref();
 
 async function restoreSavedPlayers(client) {
     const savedStates = PlayerStateManager.getAllStates();
