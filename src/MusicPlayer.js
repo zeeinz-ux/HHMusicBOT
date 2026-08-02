@@ -574,8 +574,9 @@ class MusicPlayer {
 
             // Check if already downloading - wait for it to complete
             if (this.downloadingFiles.has(filepath)) {
-                // Wait for the file to be downloaded (max 60 seconds)
-                for (let i = 0; i < 60; i++) {
+                // Wait for the file to be downloaded (max 180 seconds — the download
+                // fallback chain may try several client × format combos)
+                for (let i = 0; i < 180; i++) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     if (fsSync.existsSync(filepath)) {
@@ -589,7 +590,7 @@ class MusicPlayer {
                 }
                 
                 this.downloadingFiles.delete(filepath);
-                throw new Error('Download timeout - file not ready after 60 seconds');
+                throw new Error('Download timeout - file not ready after 180 seconds');
             }
 
             // Mark as downloading
@@ -621,28 +622,15 @@ class MusicPlayer {
                 }
             }
 
-            // For YouTube, Spotify (via YouTube), SoundCloud (via YouTube) - use youtube-dl-exec
+            // For YouTube, Spotify (via YouTube), SoundCloud (via YouTube) - use the
+            // same client × format fallback chain as getStream so downloads that
+            // fail on the default (cookies → mweb) client can still succeed via
+            // android / tv,mweb / web+poToken.
             if (track.platform === 'youtube' || track.platform === 'spotify' || track.platform === 'soundcloud') {
-                const youtubedl = require('./ytdlp-exec');
-                
-                // Use the format that getStream successfully resolved
-                // (e.g. 'worst' for videos where bestaudio is unavailable),
-                // falling back to the default 'bestaudio/best'.
-                const dlFormat = (streamInfo && typeof streamInfo === 'object' && streamInfo.format)
+                const preferredFormat = (streamInfo && typeof streamInfo === 'object' && streamInfo.format)
                     ? streamInfo.format
-                    : 'bestaudio/best';
-                await youtubedl(downloadUrl, {
-                    output: filepath,
-                    format: dlFormat,
-                    noCheckCertificates: true,
-                    noWarnings: true,
-                    preferFreeFormats: true,
-                    addHeader: [
-                        'referer:youtube.com',
-                        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    ],
-                    ...YouTube.getYtDlpOptions(),
-                });
+                    : undefined;
+                await YouTube.downloadToFile(downloadUrl, filepath, { preferredFormat });
             } else {
                 // For DirectLink - fetch and transcode with FFmpeg
                 const fetch = await ensureFetch();

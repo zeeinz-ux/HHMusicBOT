@@ -383,6 +383,76 @@ class YouTube {
         }
     }
 
+    /**
+     * Downloads a video's audio to a file, trying the same client × format
+     * fallback chain as getStream(). Used by the background cache downloader
+     * (MusicPlayer.downloadTrack) so a download that fails on the default
+     * (cookies → mweb) client can still succeed via android / tv,mweb / web+poToken.
+     *
+     * @param {string} url            YouTube URL
+     * @param {string} filepath       Destination file path (.opus or whatever)
+     * @param {Object} [opts]
+     * @param {string} [opts.preferredFormat]  Format that getStream already
+     *                                        resolved for this video (tried first)
+     * @param {boolean} [opts.silent]          Suppress success logs
+     * @returns {Promise<string>} the filepath on success
+     * @throws {Error} if every client × format combo fails
+     */
+    static async downloadToFile(url, filepath, { preferredFormat, silent } = {}) {
+        const formatCandidates = preferredFormat
+            ? [preferredFormat, 'ba/b', 'bestaudio', 'worstaudio', 'worst[acodec!=none]']
+            : ['ba/b', 'bestaudio', 'worstaudio', 'worst[acodec!=none]'];
+        const clientFallbacks = [
+            { label: 'default' },
+            { label: 'android', extractorArgs: 'youtube:player_client=android' },
+            { label: 'tv,mweb', extractorArgs: 'youtube:player_client=tv,mweb' },
+            ...(config.ytdl.poToken
+                ? [{ label: 'web+poToken', extractorArgs: `youtube:po_token=web+${config.ytdl.poToken};player_client=web` }]
+                : []),
+        ];
+
+        for (const clientCfg of clientFallbacks) {
+            for (const fmt of formatCandidates) {
+                const extra = clientCfg.extractorArgs
+                    ? { extractorArgs: clientCfg.extractorArgs, format: fmt }
+                    : { format: fmt };
+                try {
+                    // Clean any leftover partial file from a previous attempt
+                    for (const p of [filepath, `${filepath}.part`]) {
+                        if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch {} }
+                    }
+
+                    await youtubedl(url, {
+                        output: filepath,
+                        noCheckCertificates: true,
+                        noWarnings: true,
+                        preferFreeFormats: true,
+                        addHeader: [
+                            'referer:youtube.com',
+                            'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        ],
+                        ...this.getYtDlpOptions(),
+                        ...extra,
+                    });
+
+                    if (fs.existsSync(filepath) && fs.statSync(filepath).size > 0) {
+                        if (!silent) {
+                            console.log(`[YouTube.downloadToFile] client="${clientCfg.label}" format="${fmt}" — saved to ${filepath}`);
+                        }
+                        return filepath;
+                    }
+                    throw new Error('Downloaded file is empty');
+                } catch (err) {
+                    for (const p of [filepath, `${filepath}.part`]) {
+                        if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch {} }
+                    }
+                    console.warn(`[YouTube.downloadToFile] ${clientCfg.label}/${fmt} failed: ${err.message?.split('\n')[0] || err.message}`);
+                }
+            }
+        }
+        throw new Error('No playable format found for download');
+    }
+
     static async getPlaylist(url, guildId = null) {
         try {
 
