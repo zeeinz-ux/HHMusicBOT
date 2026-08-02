@@ -39,6 +39,33 @@ if (!fsSync.existsSync(CACHE_DIR)) {
 
 const isLowMemory = false;
 
+// ---- Concurrent-download cap (volume protection) ----
+// addTracks() fires preloadTrack for every queued track at once, and each
+// preload downloads the full .opus file to disk (isLowMemory=false). Without a
+// cap a large playlist add floods the volume with N simultaneous yt-dlp writes —
+// the volume fills (Errno 28) before the 15-min cleanup ever runs. The cap is
+// process-wide so ALL guilds/players share the same disk budget.
+const MAX_CONCURRENT_DOWNLOADS = 3;
+let activeDownloadCount = 0;
+const downloadWaiters = [];
+
+function waitForDownloadSlot() {
+    if (activeDownloadCount < MAX_CONCURRENT_DOWNLOADS) {
+        activeDownloadCount++;
+        return Promise.resolve();
+    }
+    return new Promise(resolve => downloadWaiters.push(resolve));
+}
+
+function releaseDownloadSlot() {
+    activeDownloadCount--;
+    const next = downloadWaiters.shift();
+    if (next) {
+        activeDownloadCount++;
+        next();
+    }
+}
+
 let cachedFetch;
 async function ensureFetch() {
     if (cachedFetch) return cachedFetch;
@@ -597,6 +624,11 @@ class MusicPlayer {
             // Mark as downloading
             this.downloadingFiles.add(filepath);
 
+            // Park here until a download slot frees up (concurrency cap). The
+            // file is already in downloadingFiles, so play()'s error path can
+            // wait for it even while it's queued behind earlier downloads.
+            await waitForDownloadSlot();
+
             // For Spotify and SoundCloud - we need to use the YouTube URL
             // These platforms have DRM protection and can't be downloaded directly
             let downloadUrl = track.url;
@@ -689,6 +721,10 @@ class MusicPlayer {
             this.downloadedFiles.add(filepath);
             this.downloadingFiles.delete(filepath); // Remove from downloading set
             this.scheduleStatePersist('download-complete', 500);
+            // Enforce MAX_CACHE_MB immediately instead of waiting for the 15-min
+            // sweep in index.js — a big queue add can otherwise fill the volume
+            // before cleanup ever runs. Non-fatal; keepFile protects this file.
+            this.trimCache(filepath).catch(() => {});
             return filepath;
 
         } catch (error) {
@@ -697,6 +733,8 @@ class MusicPlayer {
             fs.unlink(filepath).catch(() => {});
             console.error(`❌ Download failed for ${track.title}:`, error.message);
             throw error;
+        } finally {
+            releaseDownloadSlot();
         }
     }
 
@@ -714,6 +752,53 @@ class MusicPlayer {
             if (error.code !== 'ENOENT') {
                 console.error(`❌ Failed to delete file ${filepath}:`, error.message);
             }
+        }
+    }
+
+    /**
+     * Real-time cache enforcement — after a new download lands, immediately trim
+     * the cache back to MAX_CACHE_MB (oldest-first, skipping protected files).
+     * Closes the gap where the 15-min periodic sweep in index.js runs too late
+     * and a big queue add fills the volume first (Errno 28).
+     */
+    async trimCache(keepFile) {
+        try {
+            const files = await fs.readdir(CACHE_DIR);
+            const protectedFiles = PlayerStateManager.getProtectedCacheFiles();
+            if (this.currentDownloadedFile) protectedFiles.add(path.resolve(this.currentDownloadedFile));
+            if (keepFile) protectedFiles.add(path.resolve(keepFile));
+
+            const maxBytes = (parseInt(process.env.MAX_CACHE_MB, 10) || 80) * 1024 * 1024;
+
+            let totalSize = 0;
+            const fileStats = [];
+            for (const file of files) {
+                const absolutePath = path.join(CACHE_DIR, file);
+                let stat;
+                try {
+                    stat = await fs.stat(absolutePath);
+                } catch {
+                    continue;
+                }
+                totalSize += stat.size;
+                if (protectedFiles.has(path.resolve(absolutePath))) continue;
+                fileStats.push({ path: absolutePath, mtime: stat.mtimeMs, size: stat.size });
+            }
+
+            if (totalSize <= maxBytes) return;
+
+            fileStats.sort((a, b) => a.mtime - b.mtime);
+            let excess = totalSize - maxBytes;
+            for (const f of fileStats) {
+                if (excess <= 0) break;
+                try {
+                    await fs.unlink(f.path);
+                    this.downloadedFiles.delete(f.path);
+                    excess -= f.size;
+                } catch (_) {}
+            }
+        } catch (error) {
+            console.warn(`⚠️ Cache trim failed: ${error.message}`);
         }
     }
 
@@ -766,6 +851,38 @@ class MusicPlayer {
             let streamUrl = this.currentTrack.url;
             let streamInfo;
 
+            // Prefer an already-downloaded cache file over spawning a fresh
+            // provider stream — saves a wasteful yt-dlp spawn AND sidesteps
+            // transient "No playable format" failures that the background
+            // download chain (with retries) manages to succeed on.
+            let downloadedFile = null;
+            let shouldDownload = false;
+
+            if (this.currentDownloadedFile && fsSync.existsSync(this.currentDownloadedFile)) {
+                // Reuse existing file if it's the same track
+                downloadedFile = this.currentDownloadedFile;
+            } else {
+                // Check if already pre-downloaded
+                const hash = crypto.createHash('md5').update(this.currentTrack.url).digest('hex');
+                const filepath = path.join(CACHE_DIR, `track_${hash}.opus`);
+
+                if (fsSync.existsSync(filepath)) {
+                    const stats = fsSync.statSync(filepath);
+                    const minExpected = this.currentTrack?.duration
+                        ? Math.round(this.currentTrack.duration * 4096) // ~32kbps — catches severely truncated files
+                        : 0;
+                    if (stats.size > minExpected) {
+                        downloadedFile = filepath;
+                        this.downloadedFiles.add(filepath);
+                        this.currentDownloadedFile = filepath;
+                    } else {
+                        // File too small — likely truncated from failed download
+                        fs.unlink(filepath).catch(() => {});
+                    }
+                }
+                if (!downloadedFile) shouldDownload = true;
+            }
+
             // Try to reuse cache when resuming
             if (resumeFromMs > 0) {
                 const cached = this.getCachedStreamForCurrentTrack(resumeFromSeconds);
@@ -784,7 +901,7 @@ class MusicPlayer {
                 this.preloadedStreams.delete(this.currentTrack.url);
             }
 
-            if (!streamInfo) {
+            if (!downloadedFile && !streamInfo) {
                 // Get stream normally
                 switch (this.currentTrack.platform) {
                     case 'youtube':
@@ -842,7 +959,7 @@ class MusicPlayer {
                 }
             }
 
-            if (!streamInfo) {
+            if (!downloadedFile && !streamInfo) {
                 const errorMsg = await LanguageManager.getTranslation(this.guild.id, 'musicplayer.failed_get_audio_stream');
                 throw new Error(errorMsg);
             }
@@ -860,37 +977,6 @@ class MusicPlayer {
                 }
             } else {
                 streamUrl_final = streamInfo;
-            }
-
-            // Check if we can reuse the current downloaded file (for loop track mode)
-            let downloadedFile;
-            let shouldDownload = false;
-            
-            if (this.currentDownloadedFile && fsSync.existsSync(this.currentDownloadedFile)) {
-                // Reuse existing file if it's the same track
-               downloadedFile = this.currentDownloadedFile;
-            } else {
-                // Check if already pre-downloaded
-                const hash = crypto.createHash('md5').update(this.currentTrack.url).digest('hex');
-                const filepath = path.join(CACHE_DIR, `track_${hash}.opus`);
-                
-                if (fsSync.existsSync(filepath)) {
-                    const stats = fsSync.statSync(filepath);
-                    const minExpected = this.currentTrack?.duration
-                        ? Math.round(this.currentTrack.duration * 4096) // ~32kbps — catches severely truncated files
-                        : 0;
-                    if (stats.size > minExpected) {
-                        downloadedFile = filepath;
-                        this.downloadedFiles.add(filepath);
-                        this.currentDownloadedFile = filepath;
-                    } else {
-                        // File too small — likely truncated from failed download
-                        fs.unlink(filepath).catch(() => {});
-                        shouldDownload = true;
-                    }
-                } else {
-                    shouldDownload = true;
-                }
             }
 
             // If we need to download, start streaming immediately while downloading in background
@@ -1262,7 +1348,50 @@ class MusicPlayer {
             }
 
             const errorMsg = await ErrorHandler.handle(error, this.guild.id, 'MusicPlayer.play');
-            await this.handleError(error, errorMsg);
+
+            // GH#fix: release the play lock BEFORE the error handler runs.
+            // handleError() advances the queue by calling play(null, 0) — if the
+            // lock is still held (it is only released in `finally`), that call
+            // returns { success:false, 'Already playing' } and the whole queue
+            // freezes with nothing playing (previous track ended, next never
+            // started). This was the root cause of the "stuck queue".
+            this._playLock = false;
+
+            // If this track has a background download in flight (preloadTrack →
+            // downloadTrack), the download chain with retries may succeed where
+            // this instant getStream attempt failed (transient "No playable
+            // format found"). Wait for it, then retry from the cached file.
+            if (this.currentTrack && this.currentTrack.url) {
+                const hash = crypto.createHash('md5').update(this.currentTrack.url).digest('hex');
+                const filepath = path.join(CACHE_DIR, `track_${hash}.opus`);
+
+                // preloadingQueue covers preloadTrack that hasn't reached
+                // downloadTrack yet (getStream/search still running or the
+                // download is queued behind the concurrency cap).
+                const preloadInFlight = this.downloadingFiles.has(filepath) || this.preloadingQueue.includes(this.currentTrack.url);
+                if (preloadInFlight && !fsSync.existsSync(filepath)) {
+                    for (let i = 0; i < 60; i++) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        if (fsSync.existsSync(filepath)) break;
+                    }
+                }
+
+                if (fsSync.existsSync(filepath)) {
+                    const stats = await fs.stat(filepath).catch(() => null);
+                    const minExpected = this.currentTrack?.duration
+                        ? Math.round(this.currentTrack.duration * 4096)
+                        : 0;
+                    if (stats && stats.size > minExpected) {
+                        this.currentDownloadedFile = filepath;
+                        const retryResumeMs = Math.max(0, Math.floor(Number(seekMs) || 0));
+                        const retry = await this.play(null, retryResumeMs);
+                        if (retry && retry.success) return retry;
+                    }
+                }
+            }
+
+            const advanced = await this.handleError(error, errorMsg);
+            if (advanced && advanced.success) return advanced;
             return { success: false, message: errorMsg };
         } finally {
             this._playLock = false;
@@ -2270,7 +2399,11 @@ class MusicPlayer {
                 } catch (_) {}
             }
             this.currentTrack = this.queue.shift();
-            await this.play(null, 0);
+            const result = await this.play(null, 0);
+            // Return the result so play()'s error path can propagate success:
+            // when a later queue item actually starts, the caller must NOT treat
+            // the original failed play() as a failure and clobber currentTrack.
+            return result || null;
         } else {
             this.currentTrack = null;
             const msg = userMessage || await LanguageManager.getTranslation(this.guild.id, 'musicplayer.error_playlist_stopped');
@@ -2279,6 +2412,7 @@ class MusicPlayer {
                     await this.textChannel.send(msg);
                 } catch (_) {}
             }
+            return null;
         }
     }
 
