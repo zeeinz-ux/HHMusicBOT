@@ -93,9 +93,11 @@ class MusicEmbedManager {
                 }
             }
 
-            // Preload'ı tetikle - queue'daki track'leri sırayla preload et (donmayı önlemek için)
-            this.sequentialPreload(player, player.queue.slice()).catch(err =>
-                console.error('❌ Sequential preload error:', err.message)
+            // Preload hanya lagu berikutnya (queue[0]) ke cache. Preload seluruh queue
+            // sekaligus = ~19 proses yt-dlp + stream pipe terbuka → download macet &
+            // stream basi, bikin queue berhenti setelah beberapa lagu.
+            player.preloadNextTrack().catch(err =>
+                console.error('❌ Next-track preload error:', err.message)
             );
 
             // Eğer ilk şarkıyı çalmaya başladıysak ve playlist'te başka şarkılar varsa

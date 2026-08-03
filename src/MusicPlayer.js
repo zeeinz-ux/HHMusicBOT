@@ -170,6 +170,7 @@ class MusicPlayer {
         this.currentTrackStartOffsetMs = 0;
         this.pendingAutoplayTrack = null;
         this.preparingAutoplay = false;
+        this.pendingFileSwitch = null; // cache file waiting for a mid-play swap (retried after transition)
 
         // Lyrics system (button-only, no sync)
         this.currentLyrics = null; // Lyrics data for current track
@@ -556,18 +557,13 @@ class MusicPlayer {
                 addedTracks.push(track);
             }
 
-            // Immediately preload ALL newly added tracks (before playing)
-            for (const track of addedTracks) {
-                // Skip the first track ONLY if player was idle and this track will start playing immediately
-                const isAboutToPlay = wasIdle && track === addedTracks[0];
-                if (!isAboutToPlay && !this.preloadedStreams.has(track.url)) {
-                    this.preloadTrack(track).catch(err => {
-                        if (err && err.message) {
-                            console.error(`❌ Preload error for ${track.title}:`, err.message);
-                        }
-                    });
+            // Preload only the next track (not the whole queue) so playback keeps
+            // flowing without spawning a yt-dlp process per queued track.
+            this.preloadNextTrack().catch(err => {
+                if (err && err.message) {
+                    console.error(`❌ Preload error: ${err.message}`);
                 }
-            }
+            });
 
             // Auto-play if not currently playing
             if (wasIdle) {
@@ -635,14 +631,16 @@ class MusicPlayer {
                 for (let i = 0; i < 180; i++) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     
-                    if (fsSync.existsSync(filepath)) {
-                        const stats = await fs.stat(filepath);
-                        if (stats.size > 0) {
-                            this.downloadedFiles.add(filepath);
-                            this.scheduleStatePersist('download-wait-complete', 500);
-                            return filepath;
-                        }
+                if (fsSync.existsSync(filepath)) {
+                    const stats = await fs.stat(filepath);
+                    // Require the full expected size — a still-writing partial file
+                    // would otherwise be returned and switched to mid-play truncated.
+                    if (stats.size > minExpected) {
+                        this.downloadedFiles.add(filepath);
+                        this.scheduleStatePersist('download-wait-complete', 500);
+                        return filepath;
                     }
+                }
                 }
                 
                 this.downloadingFiles.delete(filepath);
@@ -904,9 +902,16 @@ class MusicPlayer {
                         downloadedFile = filepath;
                         this.downloadedFiles.add(filepath);
                         this.currentDownloadedFile = filepath;
+                    } else if (stats.size > 0 && this.downloadingFiles.has(filepath)) {
+                        // A background preload is still writing this file — don't
+                        // unlink it mid-write. The in-flight downloadTrack() dedupe
+                        // wait-loop will return the completed file, and the mid-play
+                        // switch picks it up once ready.
+                        shouldDownload = true;
                     } else {
                         // File too small — likely truncated from failed download
                         fs.unlink(filepath).catch(() => {});
+                        shouldDownload = true;
                     }
                 }
                 if (!downloadedFile) shouldDownload = true;
@@ -920,24 +925,30 @@ class MusicPlayer {
                 }
             }
 
-            // Check if stream is already preloaded (only for fresh playback)
-            const preloaded = (!streamInfo && resumeFromMs === 0)
+            // Check if stream is already preloaded (only for fresh playback).
+            // If a cached file exists we never touch the preloaded pipe — destroy it
+            // so it doesn't linger as an idle yt-dlp process (file mode ignores it).
+            if (!streamInfo && downloadedFile) {
+                const unusedPreload = this.preloadedStreams.get(this.currentTrack.url);
+                if (unusedPreload) {
+                    try { unusedPreload.info?.stream?.destroy?.(); } catch {}
+                    this.preloadedStreams.delete(this.currentTrack.url);
+                }
+            }
+
+            // Preloaded yt-dlp pipes go stale after a couple of minutes (the server
+            // closes the idle connection). If the stream was resolved long before
+            // it's actually needed, discard it and resolve fresh — a dead pipe would
+            // otherwise leave the track stuck at 0:00.
+            const preloaded = (!streamInfo && !downloadedFile && resumeFromMs === 0)
                 ? this.preloadedStreams.get(this.currentTrack.url)
                 : null;
-            if (!streamInfo && preloaded) {
-                // GH#fix: addTracks fires preloadTrack for the ENTIRE queue, and
-                // preloadTrack resolves a real yt-dlp pipe (YouTube.getStream) for
-                // every track. By the time a deep-queue track actually starts, that
-                // pipe has sat unread for minutes and delivers 0 bytes → a silent
-                // track stuck at 0:00 (signature: "Using provider stream" + "Playing"
-                // with NO [YouTube.getStream] logs right before, then "No data
-                // received from stream in 5s"). Discard preloads older than 60s and
-                // resolve a FRESH stream instead — the healthy path is fresh stream
-                // + mid-play switch to the downloaded cache file.
-                const preloadedAgeMs = Date.now() - (preloaded.at || 0);
-                if (preloadedAgeMs > 60000) {
+            if (!streamInfo && !downloadedFile && preloaded) {
+                const preloadedAgeMs = Date.now() - (preloaded.at || preloaded.createdAt || 0);
+                if (preloadedAgeMs > 120000) {
+                    try { preloaded.info?.stream?.destroy?.(); } catch {}
                     this.preloadedStreams.delete(this.currentTrack.url);
-                    console.warn(`[Playback] Discarded stale preloaded stream for "${this.currentTrack.title}" (${Math.round(preloadedAgeMs / 1000)}s old) — resolving fresh`);
+                    console.error(`[Playback] Discarded stale preloaded stream for "${this.currentTrack.title}" (${Math.round(preloadedAgeMs / 1000)}s old) — resolving fresh`);
                 } else {
                     streamInfo = preloaded.info;
                     // Remove from cache since we're using it
@@ -1037,7 +1048,15 @@ class MusicPlayer {
                                 // Prefer the stable cached file over the fragile provider
                                 // stream as soon as it's ready — kills the mid-play stall
                                 // window. Non-fatal if the swap is refused (e.g. paused).
-                                this.switchToDownloadedFile(file).catch(err => {
+                                this.switchToDownloadedFile(file).then(ok => {
+                                    // If refused (e.g. the download finished during the
+                                    // track transition while isTransitioning=true), retry
+                                    // after the transition so this track still ends up on
+                                    // the stable cached file instead of the fragile pipe.
+                                    if (!ok && !this.playingFromFile) {
+                                        this._scheduleFileSwitchRetry(file);
+                                    }
+                                }).catch(err => {
                                     console.warn(`⚠️ Cache switch failed (non-fatal): ${err?.message}`);
                                 });
                             }
@@ -1395,6 +1414,10 @@ class MusicPlayer {
                 this.prepareAutoplayCandidate().catch(() => {});
             }
 
+            // Preload the NEXT queue track into cache so its transition is instant
+            // (file playback) and never depends on a fragile provider stream.
+            this.preloadNextTrack().catch(() => {});
+
             return { success: true, track: this.currentTrack };
 
         } catch (error) {
@@ -1599,6 +1622,85 @@ class MusicPlayer {
                 console.warn(`[Playback] Decoded-audio watchdog stop failed (non-fatal): ${stopErr.message}`);
             }
         }, 6000).unref?.();
+    }
+
+    // Retry a refused mid-play cache swap. A download often completes during the
+    // track transition (isTransitioning=true) where switchToDownloadedFile bails
+    // out; without a retry the track would stay on the fragile provider stream.
+    // Bounded, self-terminating, and safe (switchToDownloadedFile re-validates
+    // track match, status, pause, position, and file existence on every attempt).
+    _scheduleFileSwitchRetry(file) {
+        if (!file || this.pendingFileSwitch === file) return;
+        this.pendingFileSwitch = file;
+
+        let attempts = 0;
+        const trySwitch = () => {
+            if (this.pendingFileSwitch !== file) return;
+            if (!this.currentTrack || this.stopRequested || this.skipRequested) {
+                this.pendingFileSwitch = null;
+                return;
+            }
+            if (attempts++ >= 15) { // ~30s window
+                this.pendingFileSwitch = null;
+                return;
+            }
+            this.switchToDownloadedFile(file).then(ok => {
+                if (ok || this.playingFromFile || !this.currentTrack || this.stopRequested || this.skipRequested) {
+                    this.pendingFileSwitch = null;
+                    return;
+                }
+                setTimeout(trySwitch, 2000).unref?.();
+            }).catch(() => {
+                this.pendingFileSwitch = null;
+            });
+        };
+        trySwitch();
+    }
+
+    // Preload ONLY the next queued track into the cache. Pre-downloading the
+    // entire queue at once spawns a yt-dlp process + open stream pipe per track
+    // (they go stale after ~2 min and get discarded), saturates YouTube's rate
+    // limits, and starves the fresh stream resolutions at track boundaries —
+    // which is what made the queue appear to stop after one song. One-ahead keeps
+    // the next transition instant (file playback, no fragile pipe) without the storm.
+    // Pass an explicit track (e.g. the pending autoplay candidate) or let it fall
+    // back to queue[0].
+    async preloadNextTrack(trackOverride = null) {
+        if (isLowMemory) return;
+        const next = trackOverride || this.queue[0];
+        if (!next || !next.url) return;
+
+        const hash = crypto.createHash('md5').update(next.url).digest('hex');
+        const filepath = path.join(CACHE_DIR, `track_${hash}.opus`);
+
+        try {
+            if (fsSync.existsSync(filepath)) {
+                const stats = fsSync.statSync(filepath);
+                if (stats.size > 0) return; // already cached
+            }
+            if (this.downloadingFiles.has(filepath)) return; // already being downloaded
+            if (this.preloadedStreams.has(next.url) || this.preloadingQueue.includes(next.url)) return;
+
+            this.preloadingQueue.push(next.url);
+            try {
+                // Download to cache only — no open stream pipe. downloadTrack()
+                // resolves the yt-dlp client × format fallback chain internally.
+                await this.downloadTrack(next, next.url);
+                this.downloadedFiles.add(filepath);
+            } catch (error) {
+                if (error && error.message) {
+                    console.warn(`⚠️ Next-track preload skipped for ${next.title}: ${error.message}`);
+                }
+            } finally {
+                const index = this.preloadingQueue.indexOf(next.url);
+                if (index > -1) this.preloadingQueue.splice(index, 1);
+            }
+        } catch (error) {
+            // Never let a stat/fs error reject the caller's unawaited fire-and-forget
+            if (error && error.message) {
+                console.warn(`⚠️ Next-track preload error for ${next.title}: ${error.message}`);
+            }
+        }
     }
 
     scheduleTrackWatchdog(streamInfo = null) {
@@ -1912,6 +2014,7 @@ class MusicPlayer {
         this.currentTrack = null;
         this.pendingEndReason = 'stop';
         this.stopRequested = true;
+        this.pendingFileSwitch = null;
         this.currentTrackStartOffsetMs = 0;
         this.lastPlaybackPosition = 0;
         this.audioPlayer.stop(true);
@@ -2454,7 +2557,7 @@ class MusicPlayer {
 
             const pick = filtered[Math.floor(Math.random() * filtered.length)];
             this.pendingAutoplayTrack = this.prepareAutoplayTrack(pick);
-            await this.preloadTrack(this.pendingAutoplayTrack).catch(() => {});
+            await this.preloadNextTrack(this.pendingAutoplayTrack).catch(() => {});
         } catch (error) {
             if (error?.message) console.warn(`⚠️ Autoplay candidate prep skipped: ${error.message}`);
         } finally {
@@ -2498,7 +2601,7 @@ class MusicPlayer {
         }
 
         if (this.queue.length > 0) {
-            this.preloadTrack(this.queue[0]).catch(() => {});
+            this.preloadNextTrack().catch(() => {});
         }
     }
 
@@ -2624,7 +2727,8 @@ class MusicPlayer {
                     info: streamInfo,
                     track: track,
                     downloaded: !isLowMemory,
-                    at: Date.now() // GH#fix: staleness stamp — play() discards preloads older than 60s
+                    at: Date.now(), // staleness stamp — play() discards stale preloads
+                    createdAt: Date.now()
                 });
             }
         } catch (error) {
@@ -3094,6 +3198,7 @@ class MusicPlayer {
             this.previousTracks = [];
             this.pendingAutoplayTrack = null;
             this.preparingAutoplay = false;
+            this.pendingFileSwitch = null;
             this.startTime = null;
             this.pausedTime = 0;
             this.currentTrackCache = null;
