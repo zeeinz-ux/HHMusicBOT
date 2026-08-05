@@ -129,6 +129,12 @@ class MusicPlayer {
 
         // Timestamps
         this.startTime = null;
+        // Wall-clock anchor set when a resource is handed to audioPlayer.play().
+        // startTime is only set once the Playing EVENT fires — if the player gets
+        // stuck in Buffering (stream yields data but never reaches Playing, e.g. a
+        // dead pipe mid-play), startTime stays null and the stall watchdog would
+        // never fire. playbackStartedTs covers that gap.
+        this.playbackStartedTs = null;
         this.pausedTime = 0;
 
         // Filters
@@ -1365,6 +1371,7 @@ class MusicPlayer {
             console.log(`▶️  Playing: ${this.currentTrack.title} (${this.currentTrack.duration}s, offset: ${resumeFromMs}ms)`);
 
             // Play the resource
+            this.playbackStartedTs = Date.now();
             this.audioPlayer.play(this.resource);
 
             // Fade in for new tracks (not resumes)
@@ -1562,6 +1569,7 @@ class MusicPlayer {
             this.lastPlaybackPosition = positionMs;
             this.pausedTime = 0;
             this.startTime = Date.now();
+            this.playbackStartedTs = Date.now();
 
             this.currentDownloadedFile = file;
             this.playingFromFile = true;
@@ -1789,8 +1797,14 @@ class MusicPlayer {
         // fires — it's only a backstop).
         if (status === AudioPlayerStatus.Playing || status === AudioPlayerStatus.Buffering) {
             const durationMs = (Number(this.currentTrack.duration) || 0) * 1000;
+            // Anchor on the LATER of startTime (set when Playing fires) and
+            // playbackStartedTs (set when play()/switch handed the resource over).
+            // Using only startTime left tracks stuck in Buffering (never Playing)
+            // invisible to the watchdog — startTime stayed null so wallElapsed
+            // computed to ~0 and the queue froze forever.
+            const wallAnchorTs = Math.max(this.startTime, this.playbackStartedTs);
             const wallElapsedMs = this.currentTrackStartOffsetMs +
-                (this.startTime ? Date.now() - this.startTime + (this.pausedTime || 0) : 0);
+                (wallAnchorTs ? Date.now() - wallAnchorTs + (this.pausedTime || 0) : 0);
             if (durationMs > 0 && wallElapsedMs >= durationMs + 10000) {
                 console.error(`[Playback] ⚠️ Stream stalled (wall-clock ${(wallElapsedMs/1000).toFixed(0)}s ≥ ${(durationMs/1000).toFixed(0)}s duration) — stopping to advance queue: "${this.currentTrack.title}"`);
                 if (!this.pendingEndReason) {
@@ -2317,6 +2331,7 @@ class MusicPlayer {
             this.resource = null;
             this.expectedTrackEndTs = null;
             this.startTime = null;
+            this.playbackStartedTs = null;
             this.pausedTime = 0;
             this.lastPlaybackPosition = 0;
             this.currentTrackStartOffsetMs = 0;
@@ -3200,6 +3215,7 @@ class MusicPlayer {
             this.preparingAutoplay = false;
             this.pendingFileSwitch = null;
             this.startTime = null;
+            this.playbackStartedTs = null;
             this.pausedTime = 0;
             this.currentTrackCache = null;
             this.activeStreamInfo = null;
